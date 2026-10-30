@@ -9,7 +9,7 @@ import '../widgets/common.dart';
 
 const kInvoiceTypes = {'egg_sale': 'Egg Sale', 'spent_hen_sale': 'Spent Hen Sale', 'feed_trade': 'Feed Trade'};
 
-String pdfUrl(Map<String, dynamic> inv) => '$kApiBase/api/public/invoices/${inv['share_token']}/pdf';
+String pdfUrl(Map<String, dynamic> inv) => '$kApiBase/public/invoices/${inv['share_token']}/pdf';
 
 Future<void> openPdf(BuildContext c, Map<String, dynamic> inv) async {
   if (!await launchUrl(Uri.parse(pdfUrl(inv)), mode: LaunchMode.externalApplication) && c.mounted) {

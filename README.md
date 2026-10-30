@@ -1,17 +1,24 @@
-# egg_farm
+# Egg Farm Manager Flutter App
 
-A new Flutter project.
+## Production API
 
-## Getting Started
+The app defaults to `https://egg-farm-backend.onrender.com/api` on Web, Android, and iOS. To target a different backend, pass a complete API base URL ending in `/api` with `--dart-define=API_BASE=...`.
 
-This project is a starting point for a Flutter application.
+## Web Deployment
 
-A few resources to get you started if this is your first Flutter project:
+Build the production Flutter Web bundle from this directory:
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+```sh
+flutter build web --release --dart-define=API_BASE=https://egg-farm-backend.onrender.com/api
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Deploy `build/web` as the static output directory on Vercel. `vercel.json` rewrites client-side routes to `/` so direct navigation and page reloads work. The PWA manifest and Flutter-generated service worker are included in the web build.
+
+## Mobile Release Builds
+
+```sh
+flutter build appbundle --release --dart-define=API_BASE=https://egg-farm-backend.onrender.com/api
+flutter build ipa --release --dart-define=API_BASE=https://egg-farm-backend.onrender.com/api
+```
+
+Android App Bundle builds require a configured Android toolchain. iOS IPA builds require macOS, Xcode, and signing configuration.

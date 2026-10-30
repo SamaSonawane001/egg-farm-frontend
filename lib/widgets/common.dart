@@ -257,7 +257,7 @@ class FarmAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final full = (url == null || url!.isEmpty) ? null : (url!.startsWith('http') ? url! : '$kApiBase$url');
+    final full = (url == null || url!.isEmpty) ? null : (url!.startsWith('http') ? url! : '$kApiOrigin$url');
     final fallback = CircleAvatar(
       radius: radius,
       backgroundColor: cs.primary.withOpacity(.14),

@@ -26,7 +26,7 @@ class ApiClient {
       };
 
   Uri _uri(String path, [Map<String, String>? query]) {
-    final u = Uri.parse('$kApiBase/api$path');
+    final u = Uri.parse('$kApiBase$path');
     return query == null ? u : u.replace(queryParameters: query);
   }
 
