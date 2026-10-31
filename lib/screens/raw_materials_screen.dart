@@ -13,6 +13,14 @@ class RawMaterialsScreen extends StatefulWidget {
 
 class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
   DateTimeRange? _dateRange;
+  final TextEditingController _search = TextEditingController();
+  String _searchTerm = '';
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
 
   Map<String, String>? get _dateQuery => _dateRange == null
       ? null
@@ -25,10 +33,9 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
     final results = await Future.wait([
       ApiClient.instance.get('/raw-materials'),
       ApiClient.instance.get('/raw-materials/logs', query: _dateQuery),
-      ApiClient.instance.get('/feed/products'),
       ApiClient.instance.get('/raw-materials/processing'),
     ]);
-    final operations = List<Map<String, dynamic>>.from(results[3] as List);
+    final operations = List<Map<String, dynamic>>.from(results[2] as List);
     final start = _dateRange?.start.toIso8601String().substring(0, 10);
     final end = _dateRange?.end.toIso8601String().substring(0, 10);
     final filteredOperations = _dateRange == null
@@ -40,7 +47,6 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
     return {
       'materials': List<Map<String, dynamic>>.from(results[0] as List),
       'logs': List<Map<String, dynamic>>.from(results[1] as List),
-      'products': List<Map<String, dynamic>>.from(results[2] as List),
       'operations': filteredOperations,
     };
   }
@@ -52,7 +58,7 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
       title: material == null ? 'Add Raw Material' : 'Edit Raw Material',
       initial: material ?? {},
       fields: [
-        FieldSpec('name', 'Material name', hint: 'e.g. Maize / Soya'),
+        const FieldSpec('name', 'Material name'),
         FieldSpec('unit', 'Stock unit', type: FieldType.select, options: [
           MapEntry('kg', 'Kilogram (kg)'),
           MapEntry('quintal', 'Quintal'),
@@ -98,25 +104,19 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
     }
   }
 
-  Future<void> _inwardForm(
-      BuildContext context, List<Map<String, dynamic>> materials) async {
-    if (materials.isEmpty) {
-      toast(context, 'Add a raw material before recording inward stock.',
-          error: true);
-      return;
-    }
+  Future<void> _inwardForm(BuildContext context) async {
     final billUpload = BillUploadController();
     try {
       final saved = await showFormDialog(
         context,
         title: 'Add Inward Stock · आवक',
         fields: [
-          FieldSpec('material_id', 'Material',
-              type: FieldType.select,
-              options: [
-                for (final m in materials)
-                  MapEntry('${m['id']}', '${m['name']} (${m['unit']})')
-              ]),
+          const FieldSpec('material_name', 'Material name'),
+          const FieldSpec('unit', 'Unit', type: FieldType.select, options: [
+            MapEntry('kg', 'Kilogram (kg)'),
+            MapEntry('quintal', 'Quintal'),
+            MapEntry('bags', 'Bags'),
+          ]),
           FieldSpec('quantity', 'Quantity',
               type: FieldType.number,
               validator: (value, _) => decimalValueError(value,
@@ -141,10 +141,9 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
           final billImageUrl =
               await billUpload.upload(moduleName: 'raw_materials');
           await ApiClient.instance.post('/raw-materials/inward', {
-            'material_id': int.parse(v['material_id']!),
+            'material_name': v['material_name'],
             'quantity': quantity,
-            'unit': materials
-                .firstWhere((m) => '${m['id']}' == v['material_id'])['unit'],
+            'unit': v['unit'],
             'date': v['date'],
             'supplier': v['vendor_name'],
             'vendor_name': v['vendor_name'],
@@ -165,18 +164,16 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
   Future<void> _processingForm(
     BuildContext context,
     List<Map<String, dynamic>> materials,
-    List<Map<String, dynamic>> products,
   ) async {
-    if (materials.isEmpty || products.isEmpty) {
-      toast(context, 'Add raw materials and a finished feed product first.',
+    if (materials.isEmpty) {
+      toast(context, 'Add a raw material while recording inward stock first.',
           error: true);
       return;
     }
     final saved = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (_) =>
-          _ProcessingDialog(materials: materials, products: products),
+      builder: (_) => _ProcessingDialog(materials: materials),
     );
     if (saved == true && context.mounted) {
       toast(context, 'Feed processing recorded');
@@ -200,92 +197,139 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
         builder: (context, data, reload) {
           final materials = data['materials'] as List<Map<String, dynamic>>;
           final logs = data['logs'] as List<Map<String, dynamic>>;
-          final products = data['products'] as List<Map<String, dynamic>>;
           final operations = data['operations'] as List<Map<String, dynamic>>;
-          return ListView(padding: const EdgeInsets.all(16), children: [
-            PageHeader(
-              title: 'Raw Material · कच्चा माल',
-              subtitle:
-                  'Live ingredient stock, inward purchases and feed processing',
-              actions: [
-                OutlinedButton.icon(
-                  onPressed: () => _materialForm(context),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add Material'),
-                ),
-                FilledButton.icon(
-                  onPressed: () => _inwardForm(context, materials),
-                  icon: const Icon(Icons.move_to_inbox_outlined),
-                  label: const Text('Add Inward Stock · आवक'),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: () =>
-                      _processingForm(context, materials, products),
-                  icon: const Icon(Icons.blender_outlined),
-                  label: const Text('Grinding / Mixing · दळण'),
-                ),
-              ],
-            ),
-            if (materials.isEmpty)
-              const EmptyState(
-                icon: Icons.inventory_2_outlined,
-                text:
-                    'No raw materials yet. Add maize, soya, minerals or supplements to begin.',
-              )
-            else
-              LayoutBuilder(builder: (context, constraints) {
-                final columns = constraints.maxWidth >= 900
-                    ? 3
-                    : constraints.maxWidth >= 580
-                        ? 2
-                        : 1;
-                final width =
-                    (constraints.maxWidth - 14 * (columns - 1)) / columns;
-                return Wrap(
-                  spacing: 14,
-                  runSpacing: 14,
-                  children: [
-                    for (final material in materials)
-                      SizedBox(
-                        width: width,
-                        child: _MaterialCard(
-                          material: material,
-                          onEdit: () =>
-                              _materialForm(context, material: material),
-                          onDelete: () => _deleteMaterial(context, material),
+          final needle = _searchTerm.trim().toLowerCase();
+          final visibleMaterials = materials.where((material) =>
+              '${material['name']} ${material['unit']}'
+                  .toLowerCase()
+                  .contains(needle));
+          final visibleLogs = logs.where((log) =>
+              '${log['material_name']} ${log['supplier']} ${log['vendor_name']} ${log['bill_number']} ${log['remarks']} ${log['transaction_type']}'
+                  .toLowerCase()
+                  .contains(needle));
+          final visibleOperations = operations.where((operation) {
+            final ingredients = List<Map<String, dynamic>>.from(
+                operation['materials'] ?? const []);
+            final sourceNames =
+                ingredients.map((m) => '${m['name']}').join(' ');
+            return '${operation['feed_product_name']} $sourceNames ${operation['remarks']}'
+                .toLowerCase()
+                .contains(needle);
+          });
+          return Column(children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: TextField(
+                controller: _search,
+                onChanged: (value) => setState(() => _searchTerm = value),
+                decoration: dec(
+                        context, 'Search materials, suppliers and history',
+                        icon: Icons.search)
+                    .copyWith(
+                  suffixIcon: _searchTerm.isEmpty
+                      ? null
+                      : IconButton(
+                          onPressed: () {
+                            _search.clear();
+                            setState(() => _searchTerm = '');
+                          },
+                          icon: const Icon(Icons.clear),
                         ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: ListView(padding: const EdgeInsets.all(16), children: [
+                PageHeader(
+                  title: 'Raw Material · कच्चा माल',
+                  subtitle:
+                      'Live ingredient stock, inward purchases and feed processing',
+                  actions: [
+                    FilledButton.icon(
+                      onPressed: () => _inwardForm(context),
+                      icon: const Icon(Icons.move_to_inbox_outlined),
+                      label: const Text('Add Inward Stock · आवक'),
+                    ),
+                    FilledButton.tonalIcon(
+                      onPressed: () => _processingForm(context, materials),
+                      icon: const Icon(Icons.blender_outlined),
+                      label: const Text('Grind & Mix / दळण-वापर'),
+                    ),
+                  ],
+                ),
+                if (visibleMaterials.isEmpty && needle.isNotEmpty)
+                  const EmptyState(
+                      icon: Icons.search_off,
+                      text: 'No raw materials match your search.')
+                else if (materials.isEmpty)
+                  const EmptyState(
+                    icon: Icons.inventory_2_outlined,
+                    text:
+                        'No raw materials yet. Add maize, soya, minerals or supplements to begin.',
+                  )
+                else
+                  LayoutBuilder(builder: (context, constraints) {
+                    final columns = constraints.maxWidth >= 900
+                        ? 3
+                        : constraints.maxWidth >= 580
+                            ? 2
+                            : 1;
+                    final width =
+                        (constraints.maxWidth - 14 * (columns - 1)) / columns;
+                    return Wrap(
+                      spacing: 14,
+                      runSpacing: 14,
+                      children: [
+                        for (final material in visibleMaterials)
+                          SizedBox(
+                            width: width,
+                            child: _MaterialCard(
+                              material: material,
+                              onEdit: () =>
+                                  _materialForm(context, material: material),
+                              onDelete: () =>
+                                  _deleteMaterial(context, material),
+                            ),
+                          ),
+                      ],
+                    );
+                  }),
+                const SizedBox(height: 24),
+                PageHeader(
+                  title: 'Transaction History',
+                  actions: [
+                    OutlinedButton.icon(
+                      onPressed: _dateFilter,
+                      icon: const Icon(Icons.date_range),
+                      label: Text(_dateRange == null
+                          ? 'Filter dates'
+                          : '${fmtDate(_dateRange!.start)} – ${fmtDate(_dateRange!.end)}'),
+                    ),
+                    if (_dateRange != null)
+                      IconButton(
+                        tooltip: 'Clear date filter',
+                        onPressed: () => setState(() => _dateRange = null),
+                        icon: const Icon(Icons.clear),
                       ),
                   ],
-                );
-              }),
-            const SizedBox(height: 24),
-            PageHeader(
-              title: 'Transaction History',
-              actions: [
-                OutlinedButton.icon(
-                  onPressed: _dateFilter,
-                  icon: const Icon(Icons.date_range),
-                  label: Text(_dateRange == null
-                      ? 'Filter dates'
-                      : '${fmtDate(_dateRange!.start)} – ${fmtDate(_dateRange!.end)}'),
                 ),
-                if (_dateRange != null)
-                  IconButton(
-                    tooltip: 'Clear date filter',
-                    onPressed: () => setState(() => _dateRange = null),
-                    icon: const Icon(Icons.clear),
-                  ),
-              ],
+                if (visibleLogs.isEmpty &&
+                    visibleOperations.isEmpty &&
+                    (logs.isNotEmpty || operations.isNotEmpty))
+                  const EmptyState(
+                      icon: Icons.search_off,
+                      text: 'No transactions match your search.')
+                else if (logs.isEmpty && operations.isEmpty)
+                  const EmptyState(
+                      icon: Icons.receipt_long_outlined,
+                      text: 'No raw material transactions for this period.')
+                else ...[
+                  for (final operation in visibleOperations)
+                    _ProcessingTile(operation: operation),
+                  for (final log in visibleLogs) _RawLogTile(log: log),
+                ],
+              ]),
             ),
-            if (logs.isEmpty && operations.isEmpty)
-              const EmptyState(
-                  icon: Icons.receipt_long_outlined,
-                  text: 'No raw material transactions for this period.')
-            else ...[
-              for (final operation in operations)
-                _ProcessingTile(operation: operation),
-              for (final log in logs) _RawLogTile(log: log),
-            ],
           ]);
         },
       );
@@ -327,6 +371,13 @@ class _MaterialCard extends StatelessWidget {
                 .textTheme
                 .headlineSmall
                 ?.copyWith(color: color)),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Chip(
+            label: Text('${material['unit']}'),
+            visualDensity: VisualDensity.compact,
+          ),
+        ),
         Text(low ? 'Low stock · replenish soon' : 'Available stock',
             style: TextStyle(color: color, fontWeight: FontWeight.w600)),
         if (asD(material['min_alert_threshold']) > 0)
@@ -395,20 +446,22 @@ class _ProcessingTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final materials =
         List<Map<String, dynamic>>.from(operation['materials'] ?? const []);
-    final ingredients = materials
-        .map((material) =>
-            '${material['name']}: ${qty(material['quantity'])} ${material['unit']}')
-        .join(', ');
     final remarks = '${operation['remarks'] ?? ''}'.trim();
+    final producedQuantity =
+        operation['produced_quantity'] ?? operation['quantity_bags'];
+    final producedUnit = operation['produced_unit'] ?? 'bags';
+    final producedFrom = materials
+        .map((material) =>
+            '${qty(material['quantity'])} ${material['unit']} ${material['name']}')
+        .join(', ');
     return Card(
       child: ListTile(
         leading: const CircleAvatar(child: Icon(Icons.blender_outlined)),
         title: Text(
-            '${qty(operation['quantity_bags'])} bags of ${operation['feed_product_name']} produced'),
+            '${qty(producedQuantity)} $producedUnit of ${operation['feed_product_name']} produced${producedFrom.isEmpty ? '' : ' from $producedFrom'}'),
         subtitle: Text(
           [
             fmtDate(operation['processing_date']),
-            if (ingredients.isNotEmpty) ingredients,
             if (remarks.isNotEmpty) remarks,
           ].join(' · '),
         ),
@@ -419,8 +472,7 @@ class _ProcessingTile extends StatelessWidget {
 
 class _ProcessingDialog extends StatefulWidget {
   final List<Map<String, dynamic>> materials;
-  final List<Map<String, dynamic>> products;
-  const _ProcessingDialog({required this.materials, required this.products});
+  const _ProcessingDialog({required this.materials});
 
   @override
   State<_ProcessingDialog> createState() => _ProcessingDialogState();
@@ -429,9 +481,10 @@ class _ProcessingDialog extends StatefulWidget {
 class _ProcessingDialogState extends State<_ProcessingDialog> {
   final _form = GlobalKey<FormState>();
   final _output = TextEditingController();
+  final _feedName = TextEditingController();
   final _notes = TextEditingController();
   final List<({String? id, TextEditingController quantity})> _inputs = [];
-  String? _feedId;
+  String _outputUnit = 'bags';
   DateTime _date = DateTime.now();
   bool _saving = false;
   String? _error;
@@ -439,7 +492,6 @@ class _ProcessingDialogState extends State<_ProcessingDialog> {
   @override
   void initState() {
     super.initState();
-    _feedId = '${widget.products.first['id']}';
     _addInput();
   }
 
@@ -449,6 +501,7 @@ class _ProcessingDialogState extends State<_ProcessingDialog> {
   @override
   void dispose() {
     _output.dispose();
+    _feedName.dispose();
     _notes.dispose();
     for (final input in _inputs) {
       input.quantity.dispose();
@@ -481,8 +534,9 @@ class _ProcessingDialogState extends State<_ProcessingDialog> {
     try {
       await ApiClient.instance.post('/raw-materials/processing', {
         'date': _date.toIso8601String().substring(0, 10),
-        'feed_product_id': int.parse(_feedId!),
-        'quantity_bags': double.parse(_output.text),
+        'feed_product_name': _feedName.text.trim(),
+        'output_quantity': double.parse(_output.text),
+        'output_unit': _outputUnit,
         'materials': inputs,
         'remarks': _notes.text.trim(),
       });
@@ -506,27 +560,40 @@ class _ProcessingDialogState extends State<_ProcessingDialog> {
             child: Form(
               key: _form,
               child: Column(mainAxisSize: MainAxisSize.min, children: [
-                DropdownButtonFormField<String>(
-                  initialValue: _feedId,
-                  isExpanded: true,
-                  decoration: dec(context, 'Finished feed product'),
-                  items: [
-                    for (final product in widget.products)
-                      DropdownMenuItem(
-                          value: '${product['id']}',
-                          child: Text('${product['name']}'))
-                  ],
-                  onChanged: (value) => setState(() => _feedId = value),
+                TextFormField(
+                  controller: _feedName,
+                  decoration: dec(context, 'Finished feed name'),
+                  validator: (value) => value == null || value.trim().isEmpty
+                      ? 'Enter the produced feed name'
+                      : null,
                 ),
                 const SizedBox(height: 12),
-                TextFormField(
-                  controller: _output,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: dec(context, 'Finished feed quantity (bags)'),
-                  validator: (value) => decimalValueError(value,
-                      maxDecimalPlaces: 2, mustBePositive: true),
-                ),
+                Row(children: [
+                  Expanded(
+                    flex: 2,
+                    child: TextFormField(
+                      controller: _output,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration: dec(context, 'Produced quantity'),
+                      validator: (value) => decimalValueError(value,
+                          maxDecimalPlaces: 3, mustBePositive: true),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _outputUnit,
+                      decoration: dec(context, 'Unit'),
+                      items: const [
+                        DropdownMenuItem(value: 'bags', child: Text('Bags')),
+                        DropdownMenuItem(value: 'kg', child: Text('Kg')),
+                      ],
+                      onChanged: (value) =>
+                          setState(() => _outputUnit = value ?? 'bags'),
+                    ),
+                  ),
+                ]),
                 const SizedBox(height: 12),
                 ListTile(
                   contentPadding: EdgeInsets.zero,

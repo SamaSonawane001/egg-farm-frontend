@@ -32,6 +32,14 @@ class MedicinesScreen extends StatefulWidget {
 
 class _MedicinesScreenState extends State<MedicinesScreen> {
   DateTimeRange? _dateRange;
+  final TextEditingController _search = TextEditingController();
+  String _searchTerm = '';
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
 
   Map<String, String>? get _dateQuery => _dateRange == null
       ? null
@@ -101,25 +109,18 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
     }
   }
 
-  Future<void> _inwardForm(
-      BuildContext context, List<Map<String, dynamic>> medicines) async {
-    if (medicines.isEmpty) {
-      toast(context, 'Add a medicine before recording received stock.',
-          error: true);
-      return;
-    }
+  Future<void> _inwardForm(BuildContext context) async {
     final billUpload = BillUploadController();
     try {
       final saved = await showFormDialog(
         context,
         title: 'Add Medicine Stock',
         fields: [
-          FieldSpec('medicine_id', 'Medicine',
-              type: FieldType.select,
-              options: [
-                for (final m in medicines)
-                  MapEntry('${m['id']}', '${m['name']} (${m['unit']})')
-              ]),
+          const FieldSpec('medicine_name', 'Medicine name'),
+          FieldSpec('category', 'Category',
+              type: FieldType.select, options: _medicineCategories),
+          FieldSpec('unit', 'Unit',
+              type: FieldType.select, options: _medicineUnits),
           FieldSpec('quantity', 'Purchased quantity',
               type: FieldType.number,
               validator: (value, _) => decimalValueError(value,
@@ -139,13 +140,12 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
         extraContentBuilder: (_) =>
             BillUploadPicker(controller: billUpload, moduleName: 'medicines'),
         onSubmit: (v) async {
-          final selected =
-              medicines.firstWhere((m) => '${m['id']}' == v['medicine_id']);
           final billImageUrl = await billUpload.upload(moduleName: 'medicines');
           await ApiClient.instance.post('/medicines/inward', {
-            'medicine_id': int.parse(v['medicine_id']!),
+            'medicine_name': v['medicine_name'],
+            'category': v['category'],
+            'unit': v['unit'],
             'quantity': double.parse(v['quantity']!),
-            'unit': selected['unit'],
             'batch_number': v['batch_number'],
             'expiry_date': v['expiry_date'],
             'date': v['date'],
@@ -231,86 +231,130 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
           final medicines = data['medicines'] as List<Map<String, dynamic>>;
           final logs = data['logs'] as List<Map<String, dynamic>>;
           final flocks = data['flocks'] as List<Map<String, dynamic>>;
-          return ListView(padding: const EdgeInsets.all(16), children: [
-            PageHeader(
-              title: 'Medicines & Health · औषधे व लस',
-              subtitle:
-                  'Stock, batch expiry alerts and daily flock treatment records',
-              actions: [
-                OutlinedButton.icon(
-                  onPressed: () => _medicineForm(context),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add Medicine'),
-                ),
-                FilledButton.icon(
-                  onPressed: () => _inwardForm(context, medicines),
-                  icon: const Icon(Icons.add_shopping_cart_outlined),
-                  label: const Text('Add Medicine Stock'),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: () => _usageForm(context, medicines, flocks),
-                  icon: const Icon(Icons.medical_services_outlined),
-                  label: const Text('Log Daily Usage'),
-                ),
-              ],
-            ),
-            if (medicines.isEmpty)
-              const EmptyState(
-                icon: Icons.medication_outlined,
-                text:
-                    'No medicines added yet. Create a medicine to receive and track stock.',
-              )
-            else
-              LayoutBuilder(builder: (context, constraints) {
-                final columns = constraints.maxWidth >= 900
-                    ? 3
-                    : constraints.maxWidth >= 580
-                        ? 2
-                        : 1;
-                final width =
-                    (constraints.maxWidth - 14 * (columns - 1)) / columns;
-                return Wrap(
-                  spacing: 14,
-                  runSpacing: 14,
-                  children: [
-                    for (final medicine in medicines)
-                      SizedBox(
-                        width: width,
-                        child: _MedicineCard(
-                          medicine: medicine,
-                          onEdit: () =>
-                              _medicineForm(context, medicine: medicine),
-                          onDelete: () => _deleteMedicine(context, medicine),
+          final needle = _searchTerm.trim().toLowerCase();
+          final visibleMedicines = medicines.where((medicine) =>
+              '${medicine['name']} ${medicine['category']} ${medicine['unit']} ${medicine['batch_numbers']}'
+                  .toLowerCase()
+                  .contains(needle));
+          final visibleLogs = logs.where((log) {
+            final allocations =
+                List<Map<String, dynamic>>.from(log['allocations'] ?? const []);
+            final batches = allocations
+                .map((allocation) => '${allocation['batch_number']}')
+                .join(' ');
+            return '${log['medicine_name']} ${log['medicine_category']} ${log['batch_number']} $batches ${log['vendor_name']} ${log['bill_number']} ${log['admin_route']} ${log['flock_name']} ${log['remarks']}'
+                .toLowerCase()
+                .contains(needle);
+          });
+          return Column(children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: TextField(
+                controller: _search,
+                onChanged: (value) => setState(() => _searchTerm = value),
+                decoration: dec(
+                        context, 'Search medicines, batches and suppliers',
+                        icon: Icons.search)
+                    .copyWith(
+                  suffixIcon: _searchTerm.isEmpty
+                      ? null
+                      : IconButton(
+                          onPressed: () {
+                            _search.clear();
+                            setState(() => _searchTerm = '');
+                          },
+                          icon: const Icon(Icons.clear),
                         ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: ListView(padding: const EdgeInsets.all(16), children: [
+                PageHeader(
+                  title: 'Medicines & Health · औषधे व लस',
+                  subtitle:
+                      'Stock, batch expiry alerts and daily flock treatment records',
+                  actions: [
+                    FilledButton.icon(
+                      onPressed: () => _inwardForm(context),
+                      icon: const Icon(Icons.add_shopping_cart_outlined),
+                      label: const Text('Add Stock / औषध आवक'),
+                    ),
+                    FilledButton.tonalIcon(
+                      onPressed: () => _usageForm(context, medicines, flocks),
+                      icon: const Icon(Icons.medical_services_outlined),
+                      label: const Text('Daily Dosage / वापर'),
+                    ),
+                  ],
+                ),
+                if (visibleMedicines.isEmpty && needle.isNotEmpty)
+                  const EmptyState(
+                      icon: Icons.search_off,
+                      text: 'No medicines match your search.')
+                else if (medicines.isEmpty)
+                  const EmptyState(
+                    icon: Icons.medication_outlined,
+                    text:
+                        'No medicines added yet. Create a medicine to receive and track stock.',
+                  )
+                else
+                  LayoutBuilder(builder: (context, constraints) {
+                    final columns = constraints.maxWidth >= 900
+                        ? 3
+                        : constraints.maxWidth >= 580
+                            ? 2
+                            : 1;
+                    final width =
+                        (constraints.maxWidth - 14 * (columns - 1)) / columns;
+                    return Wrap(
+                      spacing: 14,
+                      runSpacing: 14,
+                      children: [
+                        for (final medicine in visibleMedicines)
+                          SizedBox(
+                            width: width,
+                            child: _MedicineCard(
+                              medicine: medicine,
+                              onEdit: () =>
+                                  _medicineForm(context, medicine: medicine),
+                              onDelete: () =>
+                                  _deleteMedicine(context, medicine),
+                            ),
+                          ),
+                      ],
+                    );
+                  }),
+                const SizedBox(height: 24),
+                PageHeader(
+                  title: 'Medicine History',
+                  actions: [
+                    OutlinedButton.icon(
+                      onPressed: _dateFilter,
+                      icon: const Icon(Icons.date_range),
+                      label: Text(_dateRange == null
+                          ? 'Filter dates'
+                          : '${fmtDate(_dateRange!.start)} – ${fmtDate(_dateRange!.end)}'),
+                    ),
+                    if (_dateRange != null)
+                      IconButton(
+                        tooltip: 'Clear date filter',
+                        onPressed: () => setState(() => _dateRange = null),
+                        icon: const Icon(Icons.clear),
                       ),
                   ],
-                );
-              }),
-            const SizedBox(height: 24),
-            PageHeader(
-              title: 'Medicine History',
-              actions: [
-                OutlinedButton.icon(
-                  onPressed: _dateFilter,
-                  icon: const Icon(Icons.date_range),
-                  label: Text(_dateRange == null
-                      ? 'Filter dates'
-                      : '${fmtDate(_dateRange!.start)} – ${fmtDate(_dateRange!.end)}'),
                 ),
-                if (_dateRange != null)
-                  IconButton(
-                    tooltip: 'Clear date filter',
-                    onPressed: () => setState(() => _dateRange = null),
-                    icon: const Icon(Icons.clear),
-                  ),
-              ],
+                if (visibleLogs.isEmpty && logs.isNotEmpty && needle.isNotEmpty)
+                  const EmptyState(
+                      icon: Icons.search_off,
+                      text: 'No medicine transactions match your search.')
+                else if (logs.isEmpty)
+                  const EmptyState(
+                      icon: Icons.receipt_long_outlined,
+                      text: 'No medicine transactions for this period.')
+                else
+                  for (final log in visibleLogs) _MedicineLogTile(log: log),
+              ]),
             ),
-            if (logs.isEmpty)
-              const EmptyState(
-                  icon: Icons.receipt_long_outlined,
-                  text: 'No medicine transactions for this period.')
-            else
-              for (final log in logs) _MedicineLogTile(log: log),
           ]);
         },
       );
@@ -360,6 +404,13 @@ class _MedicineCard extends StatelessWidget {
                 .textTheme
                 .headlineSmall
                 ?.copyWith(color: color)),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Chip(
+            label: Text('${medicine['unit']}'),
+            visualDensity: VisualDensity.compact,
+          ),
+        ),
         if (low)
           Text(
               'Low stock · alert at ${qty(medicine['min_alert_level'])} ${medicine['unit']}',
