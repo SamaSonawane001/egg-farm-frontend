@@ -9,8 +9,10 @@ import 'screens/flock_screen.dart';
 import 'screens/invoices_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/monthly_expense_detail_screen.dart';
+import 'screens/medicine_detail_screen.dart';
 import 'screens/medicines_screen.dart';
 import 'screens/profile_screen.dart';
+import 'screens/raw_material_detail_screen.dart';
 import 'screens/raw_materials_screen.dart';
 import 'screens/signup_screen.dart';
 import 'widgets/app_shell.dart';
@@ -64,8 +66,24 @@ GoRouter buildRouter(AuthState auth) {
               path: '/raw-materials',
               pageBuilder: (_, __) => page(const RawMaterialsScreen())),
           GoRoute(
+            path: '/raw-materials/:materialId',
+            pageBuilder: (_, state) => page(RawMaterialDetailScreen(
+              materialId: int.parse(state.pathParameters['materialId']!),
+              materialName: (state.extra as Map<String, String>?)?['name'],
+              unit: (state.extra as Map<String, String>?)?['unit'],
+            )),
+          ),
+          GoRoute(
               path: '/medicines',
               pageBuilder: (_, __) => page(const MedicinesScreen())),
+          GoRoute(
+            path: '/medicines/:medicineId',
+            pageBuilder: (_, state) => page(MedicineDetailScreen(
+              medicineId: int.parse(state.pathParameters['medicineId']!),
+              medicineName: (state.extra as Map<String, String>?)?['name'],
+              unit: (state.extra as Map<String, String>?)?['unit'],
+            )),
+          ),
           GoRoute(
             path: '/feed/:productId',
             pageBuilder: (_, state) => page(FeedProductDetailScreen(
