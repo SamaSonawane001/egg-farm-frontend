@@ -8,6 +8,7 @@ import 'screens/feed_product_detail_screen.dart';
 import 'screens/flock_screen.dart';
 import 'screens/invoices_screen.dart';
 import 'screens/login_screen.dart';
+import 'screens/monthly_expense_detail_screen.dart';
 import 'screens/medicines_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/raw_materials_screen.dart';
@@ -44,6 +45,15 @@ GoRouter buildRouter(AuthState auth) {
           GoRoute(
               path: '/dashboard',
               pageBuilder: (_, __) => page(const DashboardScreen())),
+          GoRoute(
+            path: '/expenses/monthly',
+            pageBuilder: (_, state) => page(MonthlyExpenseDetailScreen(
+              month: int.tryParse(state.uri.queryParameters['month'] ?? '') ??
+                  DateTime.now().month,
+              year: int.tryParse(state.uri.queryParameters['year'] ?? '') ??
+                  DateTime.now().year,
+            )),
+          ),
           GoRoute(
               path: '/flock',
               pageBuilder: (_, __) => page(const FlockScreen())),

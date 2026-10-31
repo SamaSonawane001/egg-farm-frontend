@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
+import '../core/theme.dart';
 import '../widgets/bill_upload_picker.dart';
 import '../widgets/common.dart';
 import '../widgets/form_dialog.dart';
@@ -62,7 +63,8 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
   }
 
   Future<void> _medicineForm(BuildContext context,
-      {Map<String, dynamic>? medicine}) async {
+      {Map<String, dynamic>? medicine, required VoidCallback reload}) async {
+    var duplicate = false;
     final saved = await showFormDialog(
       context,
       title: medicine == null ? 'Add Medicine' : 'Edit Medicine',
@@ -87,29 +89,42 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
           'min_alert_level': double.tryParse(v['min_alert_level'] ?? '') ?? 0,
         };
         if (medicine == null) {
-          await ApiClient.instance.post('/medicines', body);
+          final result = await ApiClient.instance.post('/medicines', body);
+          duplicate = result is Map && result['duplicate'] == true;
         } else {
           await ApiClient.instance.put('/medicines/${medicine['id']}', body);
         }
       },
     );
     if (saved && context.mounted) {
-      toast(context, medicine == null ? 'Medicine added' : 'Medicine updated');
+      reload();
+      toast(
+        context,
+        duplicate
+            ? 'Product already exists. Stock will be added to existing item.'
+            : medicine == null
+                ? 'Medicine added'
+                : 'Medicine updated',
+      );
     }
   }
 
   Future<void> _deleteMedicine(
-      BuildContext context, Map<String, dynamic> medicine) async {
+      BuildContext context, Map<String, dynamic> medicine,
+      {required VoidCallback reload}) async {
     if (!await confirmDelete(context, 'medicine "${medicine['name']}"')) return;
     try {
       await ApiClient.instance.delete('/medicines/${medicine['id']}');
-      if (context.mounted) toast(context, 'Medicine deleted');
+      if (context.mounted) {
+        reload();
+        toast(context, 'Medicine deleted');
+      }
     } catch (error) {
       if (context.mounted) toast(context, '$error', error: true);
     }
   }
 
-  Future<void> _inwardForm(BuildContext context) async {
+  Future<void> _inwardForm(BuildContext context, VoidCallback reload) async {
     final billUpload = BillUploadController();
     try {
       final saved = await showFormDialog(
@@ -157,7 +172,10 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
           });
         },
       );
-      if (saved && context.mounted) toast(context, 'Medicine stock received');
+      if (saved && context.mounted) {
+        reload();
+        toast(context, 'Medicine stock received');
+      }
     } finally {
       billUpload.dispose();
     }
@@ -167,6 +185,7 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
     BuildContext context,
     List<Map<String, dynamic>> medicines,
     List<Map<String, dynamic>> flocks,
+    VoidCallback reload,
   ) async {
     if (medicines.isEmpty || flocks.isEmpty) {
       toast(
@@ -210,7 +229,10 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
         });
       },
     );
-    if (saved && context.mounted) toast(context, 'Medicine usage recorded');
+    if (saved && context.mounted) {
+      reload();
+      toast(context, 'Medicine usage recorded');
+    }
   }
 
   Future<void> _dateFilter() async {
@@ -275,13 +297,19 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                   subtitle:
                       'Stock, batch expiry alerts and daily flock treatment records',
                   actions: [
+                    OutlinedButton.icon(
+                      onPressed: () => _medicineForm(context, reload: reload),
+                      icon: const Icon(Icons.add),
+                      label: const Text('Add Medicine'),
+                    ),
                     FilledButton.icon(
-                      onPressed: () => _inwardForm(context),
+                      onPressed: () => _inwardForm(context, reload),
                       icon: const Icon(Icons.add_shopping_cart_outlined),
                       label: const Text('Add Stock / औषध आवक'),
                     ),
                     FilledButton.tonalIcon(
-                      onPressed: () => _usageForm(context, medicines, flocks),
+                      onPressed: () =>
+                          _usageForm(context, medicines, flocks, reload),
                       icon: const Icon(Icons.medical_services_outlined),
                       label: const Text('Daily Dosage / वापर'),
                     ),
@@ -315,10 +343,10 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                             width: width,
                             child: _MedicineCard(
                               medicine: medicine,
-                              onEdit: () =>
-                                  _medicineForm(context, medicine: medicine),
-                              onDelete: () =>
-                                  _deleteMedicine(context, medicine),
+                              onEdit: () => _medicineForm(context,
+                                  medicine: medicine, reload: reload),
+                              onDelete: () => _deleteMedicine(context, medicine,
+                                  reload: reload),
                             ),
                           ),
                       ],
@@ -369,6 +397,8 @@ class _MedicineCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final stock = asD(medicine['current_stock']);
+    final purchased = asD(medicine['total_purchased']);
+    final consumed = asD(medicine['total_consumed']);
     final low = stock <= asD(medicine['min_alert_level']);
     final expiryValue = medicine['nearest_expiry'] ?? medicine['expiry_date'];
     final expiry = DateTime.tryParse('$expiryValue');
@@ -376,58 +406,126 @@ class _MedicineCard extends StatelessWidget {
     final expired = daysLeft != null && daysLeft < 0;
     final nearExpiry = daysLeft != null && daysLeft >= 0 && daysLeft <= 60;
     final warning = low || expired || nearExpiry;
-    final color = warning
-        ? Theme.of(context).colorScheme.error
-        : Theme.of(context).colorScheme.primary;
+    final color =
+        warning ? Theme.of(context).colorScheme.error : AppColors.primary;
+    final unit = '${medicine['unit']}';
+    final secondary = switch (unit) {
+      'L' => '≈ ${qty(stock * 1000)} ml live stock',
+      'kg' => '≈ ${qty(stock * 1000)} g live stock',
+      'ml' => '≈ ${qty(stock / 1000)} L live stock',
+      'g' => '≈ ${qty(stock / 1000)} kg live stock',
+      _ => '≈ ${qty(stock)} $unit live stock',
+    };
+    final progress = purchased <= 0 ? 0.0 : (stock / purchased).clamp(0.0, 1.0);
     return AppCard(
+      padding: EdgeInsets.zero,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(Icons.medication_outlined, color: color),
-          const SizedBox(width: 8),
-          Expanded(
-              child: Text('${medicine['name']}',
-                  style: Theme.of(context).textTheme.titleMedium)),
-          IconButton(
-              tooltip: 'Edit medicine',
-              onPressed: onEdit,
-              icon: const Icon(Icons.edit_outlined)),
-          IconButton(
-              tooltip: 'Delete medicine',
-              onPressed: onDelete,
-              icon: Icon(Icons.delete_outline,
-                  color: Theme.of(context).colorScheme.error)),
-        ]),
-        Text('${medicine['category']}',
-            style: Theme.of(context).textTheme.bodySmall),
-        Text('${qty(stock)} ${medicine['unit']}',
-            style: Theme.of(context)
-                .textTheme
-                .headlineSmall
-                ?.copyWith(color: color)),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Chip(
-            label: Text('${medicine['unit']}'),
-            visualDensity: VisualDensity.compact,
-          ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 4, 8),
+          child: Row(children: [
+            CircleAvatar(
+              backgroundColor: AppColors.primary.withOpacity(.12),
+              child: const Icon(Icons.medication_outlined,
+                  color: AppColors.primary),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('${medicine['name']}',
+                      style: Theme.of(context).textTheme.titleLarge,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+                  Text('${medicine['category']}',
+                      style: Theme.of(context).textTheme.bodySmall),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right),
+            IconButton(
+                tooltip: 'Edit name',
+                onPressed: onEdit,
+                icon: const Icon(Icons.edit_outlined, size: 19)),
+            IconButton(
+                tooltip: 'Delete medicine',
+                onPressed: onDelete,
+                icon: Icon(Icons.delete_outline,
+                    color: Theme.of(context).colorScheme.error)),
+          ]),
         ),
-        if (low)
-          Text(
-              'Low stock · alert at ${qty(medicine['min_alert_level'])} ${medicine['unit']}',
-              style: TextStyle(color: color, fontWeight: FontWeight.w600)),
-        if (expiry != null)
-          Text(
-            '${expired ? 'Expired' : nearExpiry ? 'Expiring soon' : 'Nearest expiry'} · ${fmtDate(expiryValue)}',
-            style: TextStyle(
-                color:
-                    expired || nearExpiry ? color : Theme.of(context).hintColor,
-                fontWeight: expired || nearExpiry
-                    ? FontWeight.w600
-                    : FontWeight.normal),
-          ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${qty(stock)} $unit in stock',
+                style: Theme.of(context)
+                    .textTheme
+                    .headlineSmall
+                    ?.copyWith(color: color)),
+            Text(secondary,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: Theme.of(context).hintColor)),
+            if (low || expired || nearExpiry) ...[
+              const SizedBox(height: 4),
+              Text(
+                low
+                    ? 'Low stock · alert at ${qty(medicine['min_alert_level'])} $unit'
+                    : expired
+                        ? 'Expired · ${fmtDate(expiryValue)}'
+                        : 'Expiring soon · ${fmtDate(expiryValue)}',
+                style: TextStyle(color: color, fontWeight: FontWeight.w600),
+              ),
+            ],
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: LinearProgressIndicator(
+                minHeight: 7,
+                value: progress,
+                backgroundColor:
+                    Theme.of(context).colorScheme.outline.withOpacity(.2),
+                color: color,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(children: [
+              Expanded(
+                  child: _MedicineMetric(
+                      label: 'Purchased / आवक',
+                      value: '${qty(purchased)} $unit')),
+              Expanded(
+                  child: _MedicineMetric(
+                      label: 'Consumed / वापर',
+                      value: '${qty(consumed)} $unit')),
+            ]),
+          ]),
+        ),
       ]),
     );
   }
+}
+
+class _MedicineMetric extends StatelessWidget {
+  final String label;
+  final String value;
+  const _MedicineMetric({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: Theme.of(context)
+                  .textTheme
+                  .labelMedium
+                  ?.copyWith(color: Theme.of(context).hintColor)),
+          const SizedBox(height: 2),
+          Text(value, style: Theme.of(context).textTheme.titleSmall),
+        ],
+      );
 }
 
 class _MedicineLogTile extends StatelessWidget {

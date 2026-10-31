@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../core/api_client.dart';
@@ -345,9 +346,15 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
               TextFormField(
                 controller: _mobile,
                 keyboardType: TextInputType.phone,
+                maxLength: 10,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                autovalidateMode: AutovalidateMode.onUserInteraction,
                 decoration: dec(context, 'Customer WhatsApp number',
-                    hint: '10 digits or with country code',
-                    icon: Icons.phone_outlined),
+                    hint: '9876543210', icon: Icons.phone_outlined),
+                validator: (value) => RegExp(r'^[6-9]\d{9}$')
+                        .hasMatch(value ?? '')
+                    ? null
+                    : 'कृपया वैध १० अंकी मोबाईल नंबर टाका (उदा. 9876543210) / Please enter a valid 10-digit mobile number',
               ),
               const SizedBox(height: 12),
               DatePickerField(
@@ -395,9 +402,6 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
                             DropdownMenuItem(
                                 value: 'eggs', child: Text('Individual eggs')),
                             DropdownMenuItem(
-                                value: 'crate',
-                                child: Text('Crates (30 eggs each)')),
-                            DropdownMenuItem(
                                 value: 'tray', child: Text('Tray (30 eggs)')),
                           ],
                           onChanged: (value) => setState(
@@ -416,9 +420,7 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
                                 _type == 'egg_sale'
                                     ? (_items[idx].eggUnit == 'eggs'
                                         ? 'Eggs'
-                                        : _items[idx].eggUnit == 'crate'
-                                            ? 'Crates'
-                                            : 'Trays')
+                                        : 'Trays')
                                     : 'Qty'),
                             onChanged: (_) => setState(() {}),
                             validator: (value) {
@@ -470,7 +472,7 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
                           alignment: Alignment.centerLeft,
                           child: Text(
                             'Total: ${qty(asD(_items[idx].qtyC.text) * 30)} eggs @ ${money(_items[idx].price.text)}/egg '
-                            '(${money(asD(_items[idx].price.text) * 30)}/${_items[idx].eggUnit == 'crate' ? 'crate' : 'tray'})',
+                            '(${money(asD(_items[idx].price.text) * 30)}/tray)',
                             style: t.textTheme.bodySmall?.copyWith(
                               color: t.colorScheme.primary,
                               fontWeight: FontWeight.w600,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
+import '../core/theme.dart';
 import '../widgets/bill_upload_picker.dart';
 import '../widgets/common.dart';
 import '../widgets/form_dialog.dart';
@@ -34,6 +35,7 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
       ApiClient.instance.get('/raw-materials'),
       ApiClient.instance.get('/raw-materials/logs', query: _dateQuery),
       ApiClient.instance.get('/raw-materials/processing'),
+      ApiClient.instance.get('/feed/stock'),
     ]);
     final operations = List<Map<String, dynamic>>.from(results[2] as List);
     final start = _dateRange?.start.toIso8601String().substring(0, 10);
@@ -48,11 +50,13 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
       'materials': List<Map<String, dynamic>>.from(results[0] as List),
       'logs': List<Map<String, dynamic>>.from(results[1] as List),
       'operations': filteredOperations,
+      'kgPerBag': asD((results[3] as Map)['kg_per_bag']),
     };
   }
 
   Future<void> _materialForm(BuildContext context,
-      {Map<String, dynamic>? material}) async {
+      {Map<String, dynamic>? material, required VoidCallback reload}) async {
+    var duplicate = false;
     final saved = await showFormDialog(
       context,
       title: material == null ? 'Add Raw Material' : 'Edit Raw Material',
@@ -78,7 +82,8 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
               double.tryParse(v['min_alert_threshold'] ?? '') ?? 0,
         };
         if (material == null) {
-          await ApiClient.instance.post('/raw-materials', body);
+          final result = await ApiClient.instance.post('/raw-materials', body);
+          duplicate = result is Map && result['duplicate'] == true;
         } else {
           await ApiClient.instance
               .put('/raw-materials/${material['id']}', body);
@@ -86,25 +91,36 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
       },
     );
     if (saved && context.mounted) {
-      toast(context,
-          material == null ? 'Raw material added' : 'Raw material updated');
+      reload();
+      toast(
+        context,
+        duplicate
+            ? 'Product already exists. Stock will be added to existing item.'
+            : material == null
+                ? 'Raw material added'
+                : 'Raw material updated',
+      );
     }
   }
 
   Future<void> _deleteMaterial(
-      BuildContext context, Map<String, dynamic> material) async {
+      BuildContext context, Map<String, dynamic> material,
+      {required VoidCallback reload}) async {
     if (!await confirmDelete(context, 'raw material "${material['name']}"')) {
       return;
     }
     try {
       await ApiClient.instance.delete('/raw-materials/${material['id']}');
-      if (context.mounted) toast(context, 'Raw material deleted');
+      if (context.mounted) {
+        reload();
+        toast(context, 'Raw material deleted');
+      }
     } catch (error) {
       if (context.mounted) toast(context, '$error', error: true);
     }
   }
 
-  Future<void> _inwardForm(BuildContext context) async {
+  Future<void> _inwardForm(BuildContext context, VoidCallback reload) async {
     final billUpload = BillUploadController();
     try {
       final saved = await showFormDialog(
@@ -155,7 +171,10 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
           });
         },
       );
-      if (saved && context.mounted) toast(context, 'Inward stock recorded');
+      if (saved && context.mounted) {
+        reload();
+        toast(context, 'Inward stock recorded');
+      }
     } finally {
       billUpload.dispose();
     }
@@ -164,6 +183,7 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
   Future<void> _processingForm(
     BuildContext context,
     List<Map<String, dynamic>> materials,
+    VoidCallback reload,
   ) async {
     if (materials.isEmpty) {
       toast(context, 'Add a raw material while recording inward stock first.',
@@ -176,6 +196,7 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
       builder: (_) => _ProcessingDialog(materials: materials),
     );
     if (saved == true && context.mounted) {
+      reload();
       toast(context, 'Feed processing recorded');
     }
   }
@@ -198,6 +219,8 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
           final materials = data['materials'] as List<Map<String, dynamic>>;
           final logs = data['logs'] as List<Map<String, dynamic>>;
           final operations = data['operations'] as List<Map<String, dynamic>>;
+          final kgPerBag =
+              asD(data['kgPerBag']) > 0 ? asD(data['kgPerBag']) : 50.0;
           final needle = _searchTerm.trim().toLowerCase();
           final visibleMaterials = materials.where((material) =>
               '${material['name']} ${material['unit']}'
@@ -246,12 +269,18 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
                       'Live ingredient stock, inward purchases and feed processing',
                   actions: [
                     FilledButton.icon(
-                      onPressed: () => _inwardForm(context),
+                      onPressed: () => _materialForm(context, reload: reload),
+                      icon: const Icon(Icons.add),
+                      label: const Text('Add Material'),
+                    ),
+                    FilledButton.tonalIcon(
+                      onPressed: () => _inwardForm(context, reload),
                       icon: const Icon(Icons.move_to_inbox_outlined),
                       label: const Text('Add Inward Stock · आवक'),
                     ),
                     FilledButton.tonalIcon(
-                      onPressed: () => _processingForm(context, materials),
+                      onPressed: () =>
+                          _processingForm(context, materials, reload),
                       icon: const Icon(Icons.blender_outlined),
                       label: const Text('Grind & Mix / दळण-वापर'),
                     ),
@@ -285,10 +314,11 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
                             width: width,
                             child: _MaterialCard(
                               material: material,
-                              onEdit: () =>
-                                  _materialForm(context, material: material),
-                              onDelete: () =>
-                                  _deleteMaterial(context, material),
+                              kgPerBag: kgPerBag,
+                              onEdit: () => _materialForm(context,
+                                  material: material, reload: reload),
+                              onDelete: () => _deleteMaterial(context, material,
+                                  reload: reload),
                             ),
                           ),
                       ],
@@ -337,56 +367,120 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
 
 class _MaterialCard extends StatelessWidget {
   final Map<String, dynamic> material;
+  final double kgPerBag;
   final VoidCallback onEdit, onDelete;
   const _MaterialCard(
-      {required this.material, required this.onEdit, required this.onDelete});
+      {required this.material,
+      required this.kgPerBag,
+      required this.onEdit,
+      required this.onDelete});
 
   @override
   Widget build(BuildContext context) {
     final stock = asD(material['current_stock']);
+    final purchased = asD(material['total_purchased']);
+    final consumed = asD(material['total_consumed']);
     final low = stock <= asD(material['min_alert_threshold']);
-    final color = low
-        ? Theme.of(context).colorScheme.error
-        : Theme.of(context).colorScheme.primary;
+    final progress = purchased <= 0 ? 0.0 : (stock / purchased).clamp(0.0, 1.0);
+    final color = low ? Theme.of(context).colorScheme.error : AppColors.primary;
+    final unit = '${material['unit']}';
+    final secondary = unit == 'kg'
+        ? '≈ ${qty(stock / 100)} quintals live stock'
+        : unit == 'quintal'
+            ? '≈ ${qty(stock * 100)} kg live stock'
+            : unit == 'bags'
+                ? '≈ ${qty(stock * kgPerBag)} kg live stock'
+                : '≈ ${qty(stock)} $unit live stock';
     return AppCard(
+      padding: EdgeInsets.zero,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(Icons.grain, color: color),
-          const SizedBox(width: 8),
-          Expanded(
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 4, 8),
+          child: Row(children: [
+            CircleAvatar(
+              backgroundColor: AppColors.primary.withOpacity(.12),
+              child: const Icon(Icons.grain_outlined, color: AppColors.primary),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
               child: Text('${material['name']}',
-                  style: Theme.of(context).textTheme.titleMedium)),
-          IconButton(
-              tooltip: 'Edit material',
-              onPressed: onEdit,
-              icon: const Icon(Icons.edit_outlined)),
-          IconButton(
-              tooltip: 'Delete material',
-              onPressed: onDelete,
-              icon: Icon(Icons.delete_outline,
-                  color: Theme.of(context).colorScheme.error)),
-        ]),
-        Text('${qty(stock)} ${material['unit']}',
-            style: Theme.of(context)
-                .textTheme
-                .headlineSmall
-                ?.copyWith(color: color)),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Chip(
-            label: Text('${material['unit']}'),
-            visualDensity: VisualDensity.compact,
-          ),
+                  style: Theme.of(context).textTheme.titleLarge,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
+            ),
+            const Icon(Icons.chevron_right),
+            IconButton(
+                tooltip: 'Edit name',
+                onPressed: onEdit,
+                icon: const Icon(Icons.edit_outlined, size: 19)),
+            IconButton(
+                tooltip: 'Delete material',
+                onPressed: onDelete,
+                icon: Icon(Icons.delete_outline,
+                    color: Theme.of(context).colorScheme.error)),
+          ]),
         ),
-        Text(low ? 'Low stock · replenish soon' : 'Available stock',
-            style: TextStyle(color: color, fontWeight: FontWeight.w600)),
-        if (asD(material['min_alert_threshold']) > 0)
-          Text(
-              'Alert at ${qty(material['min_alert_threshold'])} ${material['unit']}',
-              style: Theme.of(context).textTheme.bodySmall),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${qty(stock)} $unit in stock',
+                style: Theme.of(context)
+                    .textTheme
+                    .headlineSmall
+                    ?.copyWith(color: color)),
+            Text(secondary,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: Theme.of(context).hintColor)),
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: LinearProgressIndicator(
+                minHeight: 7,
+                value: progress,
+                backgroundColor:
+                    Theme.of(context).colorScheme.outline.withOpacity(.2),
+                color: color,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(children: [
+              Expanded(
+                  child: _StockMetric(
+                      label: 'Purchased / आवक',
+                      value: '${qty(purchased)} $unit')),
+              Expanded(
+                  child: _StockMetric(
+                      label: 'Consumed / वापर',
+                      value: '${qty(consumed)} $unit')),
+            ]),
+          ]),
+        ),
       ]),
     );
   }
+}
+
+class _StockMetric extends StatelessWidget {
+  final String label;
+  final String value;
+  const _StockMetric({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: Theme.of(context)
+                  .textTheme
+                  .labelMedium
+                  ?.copyWith(color: Theme.of(context).hintColor)),
+          const SizedBox(height: 2),
+          Text(value, style: Theme.of(context).textTheme.titleSmall),
+        ],
+      );
 }
 
 class _RawLogTile extends StatelessWidget {
