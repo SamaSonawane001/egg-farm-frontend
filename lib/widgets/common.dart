@@ -3,13 +3,31 @@ import 'package:intl/intl.dart';
 import '../core/api_client.dart';
 import '../core/config.dart';
 
-double asD(dynamic v) => v is num ? v.toDouble() : (double.tryParse('${v ?? ''}') ?? 0);
+double asD(dynamic v) =>
+    v is num ? v.toDouble() : (double.tryParse('${v ?? ''}') ?? 0);
 int asI(dynamic v) => v is num ? v.toInt() : (int.tryParse('${v ?? ''}') ?? 0);
 
-final NumberFormat _nf = NumberFormat.decimalPattern('en_IN')..maximumFractionDigits = 2;
+String? decimalValueError(String? value,
+    {required int maxDecimalPlaces, bool mustBePositive = false}) {
+  if (value == null || value.trim().isEmpty) return null;
+  final number = double.tryParse(value.trim());
+  if (number == null || !number.isFinite) return 'Enter a valid number';
+  if (mustBePositive && number <= 0) {
+    return 'Enter a quantity greater than zero';
+  }
+  if (number < 0) return 'Enter a non-negative number';
+  if (double.parse(number.toStringAsFixed(maxDecimalPlaces)) != number) {
+    return 'Use at most $maxDecimalPlaces decimal places';
+  }
+  return null;
+}
+
+final NumberFormat _nf = NumberFormat.decimalPattern('en_IN')
+  ..maximumFractionDigits = 2;
 String qty(dynamic v) => _nf.format(asD(v));
-String money(dynamic v) =>
-    NumberFormat.currency(locale: 'en_IN', symbol: kCurrencySymbol, decimalDigits: 2).format(asD(v));
+String money(dynamic v) => NumberFormat.currency(
+        locale: 'en_IN', symbol: kCurrencySymbol, decimalDigits: 2)
+    .format(asD(v));
 String today() => DateFormat('yyyy-MM-dd').format(DateTime.now());
 String fmtDate(dynamic s) {
   try {
@@ -19,10 +37,12 @@ String fmtDate(dynamic s) {
   }
 }
 
-InputDecoration dec(BuildContext c, String label, {String? hint, IconData? icon, String? prefix}) {
+InputDecoration dec(BuildContext c, String label,
+    {String? hint, IconData? icon, String? prefix}) {
   final cs = Theme.of(c).colorScheme;
-  OutlineInputBorder b(Color col, [double w = 1]) =>
-      OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: col, width: w));
+  OutlineInputBorder b(Color col, [double w = 1]) => OutlineInputBorder(
+      borderRadius: BorderRadius.circular(10),
+      borderSide: BorderSide(color: col, width: w));
   return InputDecoration(
     labelText: label,
     hintText: hint,
@@ -55,10 +75,15 @@ Future<bool> confirmDelete(BuildContext c, String what) async {
       title: const Text('Delete?'),
       content: Text('This will permanently delete $what.'),
       actions: [
-        TextButton(onPressed: () => Navigator.of(dialogContext, rootNavigator: true).pop(false), child: const Text('Cancel')),
+        TextButton(
+            onPressed: () =>
+                Navigator.of(dialogContext, rootNavigator: true).pop(false),
+            child: const Text('Cancel')),
         FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: Theme.of(c).colorScheme.error),
-          onPressed: () => Navigator.of(dialogContext, rootNavigator: true).pop(true),
+          style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(c).colorScheme.error),
+          onPressed: () =>
+              Navigator.of(dialogContext, rootNavigator: true).pop(true),
           child: const Text('Delete'),
         ),
       ],
@@ -71,7 +96,11 @@ class AppCard extends StatelessWidget {
   final Widget child;
   final EdgeInsets padding;
   final Color? color;
-  const AppCard({super.key, required this.child, this.padding = const EdgeInsets.all(16), this.color});
+  const AppCard(
+      {super.key,
+      required this.child,
+      this.padding = const EdgeInsets.all(16),
+      this.color});
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -92,7 +121,13 @@ class StatCard extends StatelessWidget {
   final String label, value;
   final String? sub;
   final Color? color;
-  const StatCard({super.key, required this.icon, required this.label, required this.value, this.sub, this.color});
+  const StatCard(
+      {super.key,
+      required this.icon,
+      required this.label,
+      required this.value,
+      this.sub,
+      this.color});
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
@@ -102,11 +137,16 @@ class StatCard extends StatelessWidget {
         Row(children: [
           Container(
             padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: c.withOpacity(.12), borderRadius: BorderRadius.circular(10)),
+            decoration: BoxDecoration(
+                color: c.withOpacity(.12),
+                borderRadius: BorderRadius.circular(10)),
             child: Icon(icon, size: 20, color: c),
           ),
           const SizedBox(width: 10),
-          Expanded(child: Text(label, style: t.textTheme.bodySmall?.copyWith(color: t.hintColor), maxLines: 2)),
+          Expanded(
+              child: Text(label,
+                  style: t.textTheme.bodySmall?.copyWith(color: t.hintColor),
+                  maxLines: 2)),
         ]),
         const SizedBox(height: 14),
         FittedBox(
@@ -116,7 +156,9 @@ class StatCard extends StatelessWidget {
         ),
         if (sub != null) ...[
           const SizedBox(height: 4),
-          Text(sub!, style: t.textTheme.bodySmall?.copyWith(color: c, fontWeight: FontWeight.w600)),
+          Text(sub!,
+              style: t.textTheme.bodySmall
+                  ?.copyWith(color: c, fontWeight: FontWeight.w600)),
         ],
       ]),
     );
@@ -127,25 +169,49 @@ class PageHeader extends StatelessWidget {
   final String title;
   final String? subtitle;
   final List<Widget> actions;
-  const PageHeader({super.key, required this.title, this.subtitle, this.actions = const []});
+  const PageHeader(
+      {super.key, required this.title, this.subtitle, this.actions = const []});
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      child: LayoutBuilder(builder: (context, constraints) {
+        final titleWidget = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Text(title, style: t.textTheme.headlineSmall),
             if (subtitle != null)
               Padding(
                 padding: const EdgeInsets.only(top: 2),
-                child: Text(subtitle!, style: t.textTheme.bodyMedium?.copyWith(color: t.hintColor)),
+                child: Text(subtitle!,
+                    style:
+                        t.textTheme.bodyMedium?.copyWith(color: t.hintColor)),
               ),
-          ]),
-        ),
-        Wrap(spacing: 8, children: actions),
-      ]),
+          ],
+        );
+        final actionWidget = Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          alignment: WrapAlignment.end,
+          children: actions,
+        );
+        if (actions.isEmpty) return titleWidget;
+        if (constraints.maxWidth < 680) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              titleWidget,
+              const SizedBox(height: 12),
+              Align(alignment: Alignment.centerLeft, child: actionWidget),
+            ],
+          );
+        }
+        return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+          Expanded(child: titleWidget),
+          actionWidget,
+        ]);
+      }),
     );
   }
 }
@@ -163,7 +229,9 @@ class EmptyState extends StatelessWidget {
         child: Column(children: [
           Icon(icon, size: 40, color: t.hintColor),
           const SizedBox(height: 10),
-          Text(text, style: t.textTheme.bodyMedium?.copyWith(color: t.hintColor), textAlign: TextAlign.center),
+          Text(text,
+              style: t.textTheme.bodyMedium?.copyWith(color: t.hintColor),
+              textAlign: TextAlign.center),
         ]),
       ),
     );
@@ -177,8 +245,12 @@ class Pill extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(color: color.withOpacity(.14), borderRadius: BorderRadius.circular(20)),
-        child: Text(text, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
+        decoration: BoxDecoration(
+            color: color.withOpacity(.14),
+            borderRadius: BorderRadius.circular(20)),
+        child: Text(text,
+            style: TextStyle(
+                color: color, fontSize: 11, fontWeight: FontWeight.w700)),
       );
 }
 
@@ -243,7 +315,10 @@ class _DataLoaderState<T> extends State<DataLoader<T>> {
         const SizedBox(height: 8),
         Text('$_error', textAlign: TextAlign.center),
         const SizedBox(height: 12),
-        FilledButton.icon(onPressed: _reload, icon: const Icon(Icons.refresh), label: const Text('Retry')),
+        FilledButton.icon(
+            onPressed: _reload,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Retry')),
       ]),
     );
   }
@@ -257,12 +332,17 @@ class FarmAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final full = (url == null || url!.isEmpty) ? null : (url!.startsWith('http') ? url! : '$kApiOrigin$url');
+    final full = (url == null || url!.isEmpty)
+        ? null
+        : (url!.startsWith('http') ? url! : '$kApiOrigin$url');
     final fallback = CircleAvatar(
       radius: radius,
       backgroundColor: cs.primary.withOpacity(.14),
       child: Text(name.isEmpty ? '?' : name[0].toUpperCase(),
-          style: TextStyle(color: cs.primary, fontWeight: FontWeight.w700, fontSize: radius * .8)),
+          style: TextStyle(
+              color: cs.primary,
+              fontWeight: FontWeight.w700,
+              fontSize: radius * .8)),
     );
     if (full == null) return fallback;
     return ClipOval(
@@ -284,7 +364,8 @@ class FarmAvatar extends StatelessWidget {
                     strokeWidth: 2,
                     value: progress.expectedTotalBytes == null
                         ? null
-                        : progress.cumulativeBytesLoaded / progress.expectedTotalBytes!,
+                        : progress.cumulativeBytesLoaded /
+                            progress.expectedTotalBytes!,
                   ),
                 ),
               ),
@@ -301,7 +382,11 @@ class DatePickerField extends StatelessWidget {
   final String label;
   final String value;
   final ValueChanged<String> onChanged;
-  const DatePickerField({super.key, required this.label, required this.value, required this.onChanged});
+  const DatePickerField(
+      {super.key,
+      required this.label,
+      required this.value,
+      required this.onChanged});
   @override
   Widget build(BuildContext context) => InkWell(
         borderRadius: BorderRadius.circular(10),

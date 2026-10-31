@@ -31,6 +31,7 @@ Future<bool> showFormDialog(
   required List<FieldSpec> fields,
   Map<String, dynamic> initial = const {},
   String Function(Map<String, String> values)? preview,
+  Widget Function(BuildContext context)? extraContentBuilder,
   required Future<void> Function(Map<String, String> values) onSubmit,
 }) async {
   final r = await showDialog<bool>(
@@ -41,6 +42,7 @@ Future<bool> showFormDialog(
         fields: fields,
         initial: initial,
         preview: preview,
+        extraContentBuilder: extraContentBuilder,
         onSubmit: onSubmit),
   );
   return r == true;
@@ -51,12 +53,14 @@ class _FormDialog extends StatefulWidget {
   final List<FieldSpec> fields;
   final Map<String, dynamic> initial;
   final String Function(Map<String, String>)? preview;
+  final Widget Function(BuildContext context)? extraContentBuilder;
   final Future<void> Function(Map<String, String>) onSubmit;
   const _FormDialog(
       {required this.title,
       required this.fields,
       required this.initial,
       this.preview,
+      this.extraContentBuilder,
       required this.onSubmit});
   @override
   State<_FormDialog> createState() => _FormDialogState();
@@ -261,6 +265,11 @@ class _FormDialogState extends State<_FormDialog> {
                 Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: _field(f)),
+              if (widget.extraContentBuilder != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: widget.extraContentBuilder!(context),
+                ),
               if (widget.preview != null)
                 Container(
                   width: double.infinity,

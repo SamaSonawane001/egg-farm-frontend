@@ -2,4 +2,3 @@
 build
 .flutter-plugins*
 .packages
-pubspec.lock

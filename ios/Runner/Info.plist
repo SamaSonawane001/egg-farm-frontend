@@ -24,6 +24,10 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Capture a photo of a farm medicine or raw-material receipt.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Select a farm medicine or raw-material receipt from your photos.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
