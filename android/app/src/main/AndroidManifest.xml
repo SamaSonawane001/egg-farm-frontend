@@ -15,9 +15,18 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
-        android:label="egg_farm"
+        android:label="Egg Farm Management"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.invoiceprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/invoice_file_paths" />
+        </provider>
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -42,6 +51,7 @@
     </application>
 
     <queries>
+        <package android:name="com.whatsapp" />
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>

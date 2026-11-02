@@ -9,7 +9,8 @@ import 'router.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final auth = AuthState();
-  runApp(ChangeNotifierProvider.value(value: auth, child: EggFarmApp(auth: auth)));
+  runApp(
+      ChangeNotifierProvider.value(value: auth, child: EggFarmApp(auth: auth)));
   unawaited(auth.init());
 }
 
@@ -24,7 +25,7 @@ class _EggFarmAppState extends State<EggFarmApp> {
   late final GoRouter _router = buildRouter(widget.auth);
   @override
   Widget build(BuildContext context) => MaterialApp.router(
-        title: 'Egg Farm Manager',
+        title: 'Egg Farm Management',
         debugShowCheckedModeBanner: false,
         theme: buildTheme(Brightness.light),
         darkTheme: buildTheme(Brightness.dark),

@@ -71,9 +71,13 @@ class AppShell extends StatelessWidget {
             Expanded(
               child: Align(
                 alignment: Alignment.topCenter,
-                child: ConstrainedBox(
+                child: SafeArea(
+                  top: false,
+                  child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 1200),
-                    child: child),
+                    child: child,
+                  ),
+                ),
               ),
             ),
           ]),

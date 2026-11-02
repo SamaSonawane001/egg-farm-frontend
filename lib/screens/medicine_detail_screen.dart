@@ -346,21 +346,21 @@ class _MedicineDetailScreenState extends State<MedicineDetailScreen> {
               ]);
             }),
             const SizedBox(height: 18),
-            SegmentedButton<int>(
-              segments: const [
-                ButtonSegment(
-                  value: 0,
-                  label: Text('Purchase & delivery history / आवक'),
-                  icon: Icon(Icons.local_shipping_outlined),
+            ResponsiveHistoryTabs(
+              tabs: const [
+                ResponsiveHistoryTab(
+                  label: 'Purchase & delivery history / आवक',
+                  mobileLabel: 'Purchase & delivery history / आवक',
+                  icon: Icons.local_shipping_outlined,
                 ),
-                ButtonSegment(
-                  value: 1,
-                  label: Text('Daily dosage & usage / वापर'),
-                  icon: Icon(Icons.medical_services_outlined),
+                ResponsiveHistoryTab(
+                  label: 'Daily dosage & usage / वापर',
+                  mobileLabel: 'Daily dosage & usage / वापर',
+                  icon: Icons.medical_services_outlined,
                 ),
               ],
-              selected: {_tab},
-              onSelectionChanged: (value) => setState(() => _tab = value.first),
+              selected: _tab,
+              onChanged: (value) => setState(() => _tab = value),
             ),
             const SizedBox(height: 14),
             if (_tab == 0) ...[
@@ -394,26 +394,23 @@ class _MedicineDetailScreenState extends State<MedicineDetailScreen> {
                   ),
                 ),
             ] else ...[
-              Row(children: [
-                Expanded(
-                  child: PageHeader(
-                    title: 'Daily dosage & usage',
-                    subtitle:
-                        'Selected month: ${_month.year}-${_month.month.toString().padLeft(2, '0')}',
+              ResponsiveSectionHeader(
+                title: 'Daily dosage & usage',
+                subtitle:
+                    'Selected month: ${_month.year}-${_month.month.toString().padLeft(2, '0')}',
+                actions: [
+                  TextButton.icon(
+                    onPressed: _selectMonth,
+                    icon: const Icon(Icons.calendar_month),
+                    label: const Text('Change month'),
                   ),
-                ),
-                TextButton.icon(
-                  onPressed: _selectMonth,
-                  icon: const Icon(Icons.calendar_month),
-                  label: const Text('Change month'),
-                ),
-                const SizedBox(width: 8),
-                FilledButton.icon(
-                  onPressed: () => _usageForm(medicine, flocks, reload),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Log Dosage / वापर'),
-                ),
-              ]),
+                  FilledButton.icon(
+                    onPressed: () => _usageForm(medicine, flocks, reload),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Log Dosage / वापर'),
+                  ),
+                ],
+              ),
               AppCard(
                 child: Row(children: [
                   const Icon(Icons.summarize_outlined),

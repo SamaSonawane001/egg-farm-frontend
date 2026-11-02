@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/api_client.dart';
 import '../core/config.dart';
 
@@ -216,6 +219,152 @@ class PageHeader extends StatelessWidget {
   }
 }
 
+class ResponsiveSectionHeader extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+  final List<Widget> actions;
+
+  const ResponsiveSectionHeader({
+    super.key,
+    required this.title,
+    this.subtitle,
+    this.actions = const [],
+  });
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+        builder: (context, constraints) {
+          final heading = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: Theme.of(context).textTheme.titleLarge),
+              if (subtitle != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  subtitle!,
+                  softWrap: true,
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: Theme.of(context).hintColor),
+                ),
+              ],
+            ],
+          );
+          final actionList = Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: actions,
+          );
+          if (constraints.maxWidth < 600) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  heading,
+                  if (actions.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    actionList,
+                  ],
+                ],
+              ),
+            );
+          }
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(child: heading),
+                if (actions.isNotEmpty) ...[
+                  const SizedBox(width: 12),
+                  actionList,
+                ],
+              ],
+            ),
+          );
+        },
+      );
+}
+
+class ResponsiveHistoryTab {
+  final String label;
+  final String mobileLabel;
+  final IconData icon;
+
+  const ResponsiveHistoryTab({
+    required this.label,
+    required this.mobileLabel,
+    required this.icon,
+  });
+}
+
+class ResponsiveHistoryTabs extends StatelessWidget {
+  final List<ResponsiveHistoryTab> tabs;
+  final int selected;
+  final ValueChanged<int> onChanged;
+
+  const ResponsiveHistoryTabs({
+    super.key,
+    required this.tabs,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth >= 600) {
+            return SegmentedButton<int>(
+              segments: [
+                for (var index = 0; index < tabs.length; index++)
+                  ButtonSegment(
+                    value: index,
+                    label: Text(tabs[index].label, softWrap: true),
+                    icon: Icon(tabs[index].icon),
+                  ),
+              ],
+              selected: {selected},
+              onSelectionChanged: (value) => onChanged(value.first),
+            );
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var index = 0; index < tabs.length; index++)
+                Padding(
+                  padding:
+                      EdgeInsets.only(bottom: index == tabs.length - 1 ? 0 : 8),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: selected == index
+                        ? FilledButton.icon(
+                            onPressed: () => onChanged(index),
+                            icon: Icon(tabs[index].icon),
+                            label: Text(
+                              tabs[index].mobileLabel,
+                              softWrap: true,
+                              textAlign: TextAlign.center,
+                            ),
+                          )
+                        : OutlinedButton.icon(
+                            onPressed: () => onChanged(index),
+                            icon: Icon(tabs[index].icon),
+                            label: Text(
+                              tabs[index].mobileLabel,
+                              softWrap: true,
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                  ),
+                ),
+            ],
+          );
+        },
+      );
+}
+
 class EmptyState extends StatelessWidget {
   final IconData icon;
   final String text;
@@ -258,7 +407,9 @@ class Pill extends StatelessWidget {
 class DataLoader<T> extends StatefulWidget {
   final Future<T> Function() load;
   final Widget Function(BuildContext, T, VoidCallback reload) builder;
-  const DataLoader({super.key, required this.load, required this.builder});
+  final String? cacheKey;
+  const DataLoader(
+      {super.key, required this.load, required this.builder, this.cacheKey});
   @override
   State<DataLoader<T>> createState() => _DataLoaderState<T>();
 }
@@ -273,6 +424,7 @@ class _DataLoaderState<T> extends State<DataLoader<T>> {
   void initState() {
     super.initState();
     ApiClient.instance.mutationVersion.addListener(_onMutation);
+    if (widget.cacheKey != null) _restoreCache();
     _reload();
   }
 
@@ -295,6 +447,14 @@ class _DataLoaderState<T> extends State<DataLoader<T>> {
         _error = null;
         _loading = false;
       });
+      if (widget.cacheKey != null) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString(widget.cacheKey!, jsonEncode(result));
+        } catch (error) {
+          debugPrint('Could not cache ${widget.cacheKey}: $error');
+        }
+      }
     } catch (error) {
       if (!mounted || requestId != _requestId) return;
       setState(() {
@@ -302,6 +462,22 @@ class _DataLoaderState<T> extends State<DataLoader<T>> {
         _loading = false;
       });
       if (_data != null) toast(context, '$error', error: true);
+    }
+  }
+
+  Future<void> _restoreCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cached = prefs.getString(widget.cacheKey!);
+      if (cached == null || !mounted || _data != null) return;
+      final decoded = jsonDecode(cached);
+      if (decoded is! T) return;
+      setState(() {
+        _data = decoded;
+        _loading = false;
+      });
+    } catch (error) {
+      debugPrint('Could not restore ${widget.cacheKey} cache: $error');
     }
   }
 

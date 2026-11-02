@@ -295,21 +295,21 @@ class _RawMaterialDetailScreenState extends State<RawMaterialDetailScreen> {
               ]);
             }),
             const SizedBox(height: 18),
-            SegmentedButton<int>(
-              segments: const [
-                ButtonSegment(
-                  value: 0,
-                  label: Text('Purchase & delivery history · आवक'),
-                  icon: Icon(Icons.local_shipping_outlined),
+            ResponsiveHistoryTabs(
+              tabs: const [
+                ResponsiveHistoryTab(
+                  label: 'Purchase & delivery history · आवक',
+                  mobileLabel: 'Purchase & delivery history · आवक',
+                  icon: Icons.local_shipping_outlined,
                 ),
-                ButtonSegment(
-                  value: 1,
-                  label: Text('Usage & consumption · दळण'),
-                  icon: Icon(Icons.blender_outlined),
+                ResponsiveHistoryTab(
+                  label: 'Usage & consumption · दळण',
+                  mobileLabel: 'Usage & consumption · दळण',
+                  icon: Icons.blender_outlined,
                 ),
               ],
-              selected: {_tab},
-              onSelectionChanged: (value) => setState(() => _tab = value.first),
+              selected: _tab,
+              onChanged: (value) => setState(() => _tab = value),
             ),
             const SizedBox(height: 14),
             if (_tab == 0) ...[
@@ -338,24 +338,23 @@ class _RawMaterialDetailScreenState extends State<RawMaterialDetailScreen> {
                   ),
                 ),
             ] else ...[
-              Row(children: [
-                Expanded(
-                  child: PageHeader(
-                    title: 'Processing history',
-                    subtitle: 'Selected month: $_month',
+              ResponsiveSectionHeader(
+                title: 'Processing history',
+                subtitle: 'Selected month: $_month',
+                actions: [
+                  FilledButton.icon(
+                    onPressed: () =>
+                        _processingForm(material, kgPerBag, reload),
+                    icon: const Icon(Icons.blender_outlined),
+                    label: const Text('Grind & Mix / दळण-वापर'),
                   ),
-                ),
-                FilledButton.icon(
-                  onPressed: () => _processingForm(material, kgPerBag, reload),
-                  icon: const Icon(Icons.blender_outlined),
-                  label: const Text('Grind & Mix / दळण-वापर'),
-                ),
-                TextButton.icon(
-                  onPressed: _selectMonth,
-                  icon: const Icon(Icons.calendar_month),
-                  label: const Text('Change month'),
-                ),
-              ]),
+                  TextButton.icon(
+                    onPressed: _selectMonth,
+                    icon: const Icon(Icons.calendar_month),
+                    label: const Text('Change month'),
+                  ),
+                ],
+              ),
               AppCard(
                 child: Row(children: [
                   const Icon(Icons.summarize_outlined),

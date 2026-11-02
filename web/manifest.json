@@ -1,11 +1,11 @@
 {
-    "name": "egg_farm",
-    "short_name": "egg_farm",
+    "name": "Egg Farm Management",
+    "short_name": "Egg Farm",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#FFFFFF",
+    "theme_color": "#00796B",
+    "description": "Egg Farm Management",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

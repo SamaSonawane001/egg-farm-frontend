@@ -59,7 +59,12 @@ class _MonthlyExpenseDetailScreenState
   Future<Map<String, dynamic>> _load() async =>
       Map<String, dynamic>.from(await ApiClient.instance.get(
         '/expenses/monthly-breakdown',
-        query: {'month': '$_month', 'year': '$_year'},
+        query: {
+          'month': '$_month',
+          'year': '$_year',
+          'limit': '20',
+          'offset': '0',
+        },
       ));
 
   void _selectMonth(String value) {
@@ -79,6 +84,8 @@ class _MonthlyExpenseDetailScreenState
               List<Map<String, dynamic>>.from(data['categories'] ?? const []);
           final transactions = List<Map<String, dynamic>>.from(
               data['itemized_transactions'] ?? const []);
+          var hasMore = data['has_more'] == true;
+          var loadingMore = false;
           final needle = _searchTerm.trim().toLowerCase();
           final filtered = transactions.where((transaction) {
             final category = '${transaction['category']}';
@@ -97,132 +104,219 @@ class _MonthlyExpenseDetailScreenState
           if (!monthOptions.contains(selectedMonth)) {
             monthOptions.add(selectedMonth);
           }
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Row(children: [
-                IconButton(
-                  tooltip: 'Back',
-                  onPressed: () => context.pop(),
-                  icon: const Icon(Icons.arrow_back),
-                ),
-                Expanded(
-                  child: Text(
-                    'Monthly Expense Breakdown & Analytics',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                ),
-                SizedBox(
-                  width: 170,
-                  child: DropdownButtonFormField<String>(
-                    value: selectedMonth,
-                    isExpanded: true,
-                    decoration: dec(context, 'Month'),
-                    items: [
-                      for (final option in monthOptions)
-                        DropdownMenuItem(
-                          value: option,
-                          child: Text(
-                            '${_monthNames[int.parse(option.substring(5)) - 1]} ${option.substring(0, 4)}',
-                            overflow: TextOverflow.ellipsis,
+          return StatefulBuilder(
+              builder: (context, setLocalState) => ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final monthPicker = DropdownButtonFormField<String>(
+                            value: selectedMonth,
+                            isExpanded: true,
+                            decoration: dec(context, 'Month'),
+                            items: [
+                              for (final option in monthOptions)
+                                DropdownMenuItem(
+                                  value: option,
+                                  child: Text(
+                                    '${_monthNames[int.parse(option.substring(5)) - 1]} ${option.substring(0, 4)}',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                            ],
+                            onChanged: (value) {
+                              if (value != null) _selectMonth(value);
+                            },
+                          );
+                          final heading = Row(
+                            children: [
+                              IconButton(
+                                tooltip: 'Back',
+                                onPressed: () => context.pop(),
+                                icon: const Icon(Icons.arrow_back),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  'Monthly Expense Breakdown & Analytics',
+                                  softWrap: true,
+                                  style: Theme.of(context).textTheme.titleLarge,
+                                ),
+                              ),
+                            ],
+                          );
+                          if (constraints.maxWidth < 600) {
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                heading,
+                                const SizedBox(height: 8),
+                                monthPicker,
+                              ],
+                            );
+                          }
+                          return Row(
+                            children: [
+                              Expanded(child: heading),
+                              const SizedBox(width: 12),
+                              SizedBox(width: 170, child: monthPicker),
+                            ],
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      AppCard(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        child: Row(children: [
+                          const CircleAvatar(
+                            backgroundColor: AppColors.primary,
+                            child:
+                                Icon(Icons.trending_down, color: Colors.white),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                    'Total expenses · ${_monthNames[_month - 1]} $_year',
+                                    style:
+                                        Theme.of(context).textTheme.bodyMedium),
+                                const SizedBox(height: 4),
+                                Text(money(total),
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .headlineMedium
+                                        ?.copyWith(color: AppColors.danger)),
+                              ],
+                            ),
+                          ),
+                        ]),
+                      ),
+                      const SizedBox(height: 20),
+                      Text('Category Breakdown',
+                          style: Theme.of(context).textTheme.titleLarge),
+                      const SizedBox(height: 10),
+                      for (final category in categories)
+                        _CategoryBreakdownCard(
+                          category: category,
+                          total: total,
+                          selected: _categoryFilter == category['category'],
+                          onTap: () => setState(() {
+                            _categoryFilter =
+                                _categoryFilter == category['category']
+                                    ? 'All'
+                                    : '${category['category']}';
+                          }),
+                        ),
+                      const SizedBox(height: 18),
+                      Text('Itemized Expenses',
+                          style: Theme.of(context).textTheme.titleLarge),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _search,
+                        onChanged: (value) =>
+                            setState(() => _searchTerm = value),
+                        decoration: dec(
+                                context, 'Search items, vendors and categories',
+                                icon: Icons.search)
+                            .copyWith(
+                          suffixIcon: _searchTerm.isEmpty
+                              ? null
+                              : IconButton(
+                                  onPressed: () {
+                                    _search.clear();
+                                    setState(() => _searchTerm = '');
+                                  },
+                                  icon: const Icon(Icons.clear),
+                                ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(children: [
+                          for (final category in ['All', ..._expenseCategories])
+                            Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: ChoiceChip(
+                                label: Text(category),
+                                selected: _categoryFilter == category,
+                                onSelected: (_) =>
+                                    setState(() => _categoryFilter = category),
+                              ),
+                            ),
+                        ]),
+                      ),
+                      if (filtered.isEmpty)
+                        const EmptyState(
+                          icon: Icons.receipt_long_outlined,
+                          text: 'No expenses match this month and filter.',
+                        )
+                      else
+                        for (final transaction in filtered)
+                          _ExpenseTransactionTile(transaction: transaction),
+                      if (hasMore)
+                        Center(
+                          child: TextButton.icon(
+                            onPressed: loadingMore
+                                ? null
+                                : () async {
+                                    setLocalState(() => loadingMore = true);
+                                    try {
+                                      final next = Map<String, dynamic>.from(
+                                        await ApiClient.instance.get(
+                                          '/expenses/monthly-breakdown',
+                                          query: {
+                                            'month': '$_month',
+                                            'year': '$_year',
+                                            'limit': '20',
+                                            'offset': '${transactions.length}',
+                                          },
+                                        ) as Map,
+                                      );
+                                      final nextTransactions =
+                                          List<Map<String, dynamic>>.from(
+                                              next['itemized_transactions']
+                                                  as List);
+                                      transactions.addAll(nextTransactions);
+                                      filtered.addAll(nextTransactions.where(
+                                        (transaction) {
+                                          final category =
+                                              '${transaction['category']}';
+                                          return (_categoryFilter == 'All' ||
+                                                  category ==
+                                                      _categoryFilter) &&
+                                              '${transaction['title']} $category ${transaction['vendor']} ${transaction['date']}'
+                                                  .toLowerCase()
+                                                  .contains(needle);
+                                        },
+                                      ));
+                                      setLocalState(() {
+                                        hasMore = next['has_more'] == true;
+                                        loadingMore = false;
+                                      });
+                                    } catch (error) {
+                                      setLocalState(() => loadingMore = false);
+                                      if (context.mounted) {
+                                        toast(context, '$error', error: true);
+                                      }
+                                    }
+                                  },
+                            icon: loadingMore
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.expand_more),
+                            label: Text(loadingMore
+                                ? 'Loading...'
+                                : 'Load more expenses'),
                           ),
                         ),
                     ],
-                    onChanged: (value) {
-                      if (value != null) _selectMonth(value);
-                    },
-                  ),
-                ),
-              ]),
-              const SizedBox(height: 12),
-              AppCard(
-                color: Theme.of(context).colorScheme.primaryContainer,
-                child: Row(children: [
-                  const CircleAvatar(
-                    backgroundColor: AppColors.primary,
-                    child: Icon(Icons.trending_down, color: Colors.white),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                            'Total expenses · ${_monthNames[_month - 1]} $_year',
-                            style: Theme.of(context).textTheme.bodyMedium),
-                        const SizedBox(height: 4),
-                        Text(money(total),
-                            style: Theme.of(context)
-                                .textTheme
-                                .headlineMedium
-                                ?.copyWith(color: AppColors.danger)),
-                      ],
-                    ),
-                  ),
-                ]),
-              ),
-              const SizedBox(height: 20),
-              Text('Category Breakdown',
-                  style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 10),
-              for (final category in categories)
-                _CategoryBreakdownCard(
-                  category: category,
-                  total: total,
-                  selected: _categoryFilter == category['category'],
-                  onTap: () => setState(() {
-                    _categoryFilter = _categoryFilter == category['category']
-                        ? 'All'
-                        : '${category['category']}';
-                  }),
-                ),
-              const SizedBox(height: 18),
-              Text('Itemized Expenses',
-                  style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _search,
-                onChanged: (value) => setState(() => _searchTerm = value),
-                decoration: dec(context, 'Search items, vendors and categories',
-                        icon: Icons.search)
-                    .copyWith(
-                  suffixIcon: _searchTerm.isEmpty
-                      ? null
-                      : IconButton(
-                          onPressed: () {
-                            _search.clear();
-                            setState(() => _searchTerm = '');
-                          },
-                          icon: const Icon(Icons.clear),
-                        ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(children: [
-                  for (final category in ['All', ..._expenseCategories])
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: ChoiceChip(
-                        label: Text(category),
-                        selected: _categoryFilter == category,
-                        onSelected: (_) =>
-                            setState(() => _categoryFilter = category),
-                      ),
-                    ),
-                ]),
-              ),
-              if (filtered.isEmpty)
-                const EmptyState(
-                  icon: Icons.receipt_long_outlined,
-                  text: 'No expenses match this month and filter.',
-                )
-              else
-                for (final transaction in filtered)
-                  _ExpenseTransactionTile(transaction: transaction),
-            ],
-          );
+                  ));
         },
       );
 }

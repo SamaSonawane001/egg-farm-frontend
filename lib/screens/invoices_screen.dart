@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -16,6 +17,7 @@ const kInvoiceTypes = {
   'spent_hen_sale': 'Spent Hen Sale',
   'feed_trade': 'Feed Trade'
 };
+const _whatsAppChannel = MethodChannel('egg_farm/invoice_share');
 
 double _roundCurrency(double value) =>
     ((value + 1e-10) * 100).roundToDouble() / 100;
@@ -33,12 +35,15 @@ Future<void> openPdf(BuildContext c, Map<String, dynamic> inv) async {
 
 String? _whatsAppPhone(dynamic value) {
   var phone = '$value'.replaceAll(RegExp(r'[^0-9]'), '');
-  if (phone.startsWith('00')) phone = phone.substring(2);
-  if (phone.length == 10) return '$kDefaultCountryCode$phone';
-  if (phone.length == 11 && phone.startsWith('0')) {
-    return '$kDefaultCountryCode${phone.substring(1)}';
+  while (phone.startsWith('0')) {
+    phone = phone.substring(1);
   }
-  if (phone.length == 12 && phone.startsWith(kDefaultCountryCode)) {
+  if (RegExp(r'^[6-9]\d{9}$').hasMatch(phone)) {
+    return '$kDefaultCountryCode$phone';
+  }
+  if (phone.length == 12 &&
+      phone.startsWith(kDefaultCountryCode) &&
+      RegExp(r'^91[6-9]\d{9}$').hasMatch(phone)) {
     return phone;
   }
   return null;
@@ -49,11 +54,15 @@ String _invoiceShareMessage(Map<String, dynamic> inv, String farmName) {
   final itemLines = items
       .map((item) => _whatsAppLine(item, inv['invoice_type'] == 'egg_sale'))
       .join('\n');
-  return 'Hello ${inv['customer_name']},\n'
+  final message = 'Hello ${inv['customer_name']},\n'
       'Invoice ${inv['invoice_no']} from $farmName\n'
       'Date: ${fmtDate(inv['invoice_date'])}\n'
       '\n$itemLines\n'
       'Total: ${money(inv['grand_total'])}';
+  return message.replaceAll(
+    RegExp(r'https?://\S+', caseSensitive: false),
+    '',
+  );
 }
 
 Future<void> sendWhatsApp(
@@ -68,36 +77,7 @@ Future<void> sendWhatsApp(
   }
 
   final message = _invoiceShareMessage(inv, farmName);
-  final directUri = Uri(
-    scheme: 'whatsapp',
-    host: 'send',
-    queryParameters: {'phone': phone, 'text': message},
-  );
-  try {
-    if (await launchUrl(directUri, mode: LaunchMode.externalApplication)) {
-      return;
-    }
-  } catch (e) {
-    debugPrint('Could not launch WhatsApp app URI: $e');
-  }
-
-  final fallbackUri = Uri.https('api.whatsapp.com', '/send', {
-    'phone': phone,
-    'text': message,
-  });
-  try {
-    if (!await launchUrl(fallbackUri, mode: LaunchMode.externalApplication) &&
-        c.mounted) {
-      toast(c, 'Could not open WhatsApp.', error: true);
-    }
-  } catch (e) {
-    debugPrint('Could not open WhatsApp web fallback: $e');
-    if (c.mounted) toast(c, 'Could not open WhatsApp.', error: true);
-  }
-}
-
-Future<void> shareInvoicePdf(
-    BuildContext c, Map<String, dynamic> inv, String farmName) async {
+  XFile pdfFile;
   try {
     final response = await http
         .get(Uri.parse(pdfUrl(inv)))
@@ -109,19 +89,78 @@ Future<void> shareInvoicePdf(
         String.fromCharCodes(response.bodyBytes.take(5)) != '%PDF-') {
       throw Exception('The server did not return a valid PDF');
     }
+    pdfFile = await createInvoicePdfFile(
+      response.bodyBytes,
+      '${inv['id']}',
+      fileNamePrefix: 'invoice_',
+    );
+  } catch (error) {
+    debugPrint('Could not prepare invoice PDF for WhatsApp: $error');
+    if (c.mounted) {
+      toast(c, 'Could not prepare the invoice PDF. Please try again.',
+          error: true);
+    }
+    return;
+  }
 
-    final file =
-        await createInvoicePdfFile(response.bodyBytes, '${inv['invoice_no']}');
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+    try {
+      final shared = await _whatsAppChannel.invokeMethod<bool>(
+        'shareInvoiceToWhatsApp',
+        {
+          'filePath': pdfFile.path,
+          'phone': phone,
+          'text': message,
+        },
+      );
+      if (shared == true) return;
+    } catch (error) {
+      debugPrint('Direct WhatsApp PDF share failed: $error');
+    }
+  }
+
+  final directUri = Uri(
+    scheme: 'whatsapp',
+    host: 'send',
+    queryParameters: {'phone': phone, 'text': message},
+  );
+  var chatOpened = false;
+  try {
+    chatOpened =
+        await launchUrl(directUri, mode: LaunchMode.externalApplication);
+  } catch (e) {
+    debugPrint('Could not launch WhatsApp app URI: $e');
+  }
+
+  if (!chatOpened) {
+    final fallbackUri = Uri.https('api.whatsapp.com', '/send', {
+      'phone': phone,
+      'text': message,
+    });
+    try {
+      chatOpened =
+          await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      debugPrint('Could not open WhatsApp web fallback: $e');
+    }
+  }
+
+  try {
     await Share.shareXFiles(
-      [file],
-      text: _invoiceShareMessage(inv, farmName),
+      [pdfFile],
+      text: message,
       subject: 'Invoice ${inv['invoice_no']}',
     );
-  } catch (e) {
-    debugPrint('Error sharing invoice PDF: $e');
+  } catch (error) {
+    debugPrint('Invoice PDF fallback share failed: $error');
     if (c.mounted) {
-      toast(c, 'Could not share the invoice PDF. Please try again.',
-          error: true);
+      toast(
+        c,
+        chatOpened
+            ? 'WhatsApp opened, but the invoice PDF could not be shared.'
+            : 'Could not open WhatsApp or share the invoice PDF.',
+        error: true,
+      );
     }
   }
 }
@@ -165,11 +204,6 @@ class InvoicesScreen extends StatelessWidget {
             Text(
                 'Total ${money(created['grand_total'])}. Share it with ${created['customer_name']}?'),
             const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: () => shareInvoicePdf(c, created, auth.farmName),
-              icon: const Icon(Icons.attach_file),
-              label: const Text('Share PDF File'),
-            ),
           ],
         ),
         actions: [
@@ -195,7 +229,8 @@ class InvoicesScreen extends StatelessWidget {
     return DataLoader<Map<String, dynamic>>(
       load: () async {
         final results = await Future.wait([
-          ApiClient.instance.get('/invoices'),
+          ApiClient.instance
+              .get('/invoices', query: {'limit': '20', 'offset': '0'}),
           ApiClient.instance.get('/eggs/stock')
         ]);
         return {
@@ -205,98 +240,137 @@ class InvoicesScreen extends StatelessWidget {
       },
       builder: (context, data, reload) {
         final list = data['invoices'] as List<Map<String, dynamic>>;
+        var hasMore = list.length == 20;
+        var loadingMore = false;
         final eggStock = data['eggStock'] as Map<String, dynamic>;
         final t = Theme.of(context);
-        return ListView(padding: const EdgeInsets.all(16), children: [
-          PageHeader(
-            title: 'Invoicing & Billing',
-            subtitle:
-                '${list.length} invoices  •  ${money(list.fold<double>(0, (s, i) => s + asD(i['grand_total'])))} billed',
-            actions: [
-              Pill('Egg stock: ${qty(eggStock['available_eggs'])}',
-                  AppColors.primary),
-              FilledButton.icon(
-                  onPressed: () =>
-                      _create(context, reload, asD(eggStock['available_eggs'])),
-                  icon: const Icon(Icons.add),
-                  label: const Text('New invoice')),
-            ],
-          ),
-          if (list.isEmpty)
-            const EmptyState(
-                icon: Icons.receipt_long_outlined,
-                text: 'No invoices yet. Create your first one.'),
-          for (final i in list)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: AppCard(
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(children: [
-                        Expanded(
-                            child: Text(
-                                '${i['invoice_no']}  •  ${i['customer_name']}',
-                                style: t.textTheme.titleMedium)),
-                        Text(money(i['grand_total']),
-                            style: t.textTheme.titleMedium
-                                ?.copyWith(color: t.colorScheme.primary)),
-                      ]),
-                      const SizedBox(height: 6),
-                      Row(children: [
-                        Pill(
-                            kInvoiceTypes[i['invoice_type']] ??
-                                '${i['invoice_type']}',
-                            AppColors.yolk),
-                        const SizedBox(width: 8),
-                        Text(
-                            '${fmtDate(i['invoice_date'])}  •  ${i['items_count']} items',
-                            style: t.textTheme.bodySmall
-                                ?.copyWith(color: t.hintColor)),
-                      ]),
-                      const SizedBox(height: 8),
-                      Wrap(spacing: 8, runSpacing: 4, children: [
-                        OutlinedButton.icon(
-                            onPressed: () => openPdf(context, i),
-                            icon: const Icon(Icons.picture_as_pdf, size: 18),
-                            label: const Text('PDF')),
-                        OutlinedButton.icon(
-                          onPressed: () =>
-                              shareInvoicePdf(context, i, auth.farmName),
-                          icon: const Icon(Icons.attach_file, size: 18),
-                          label: const Text('Share PDF File'),
-                        ),
-                        FilledButton.icon(
-                          style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFF25D366),
-                              foregroundColor: Colors.white),
-                          onPressed: () =>
-                              sendWhatsApp(context, i, auth.farmName),
-                          icon: const Icon(Icons.send, size: 18),
-                          label: const Text('Send via WhatsApp'),
-                        ),
-                        IconButton(
-                          icon: Icon(Icons.delete_outline,
-                              color: t.colorScheme.error),
-                          onPressed: () async {
-                            if (!await confirmDelete(
-                                context, 'invoice ${i['invoice_no']}')) return;
-                            try {
-                              await ApiClient.instance
-                                  .delete('/invoices/${i['id']}');
-                              if (context.mounted)
-                                toast(context, 'Invoice deleted successfully');
-                            } catch (e) {
-                              if (context.mounted)
-                                toast(context, '$e', error: true);
-                            }
-                          },
-                        ),
-                      ]),
-                    ]),
-              ),
-            ),
-        ]);
+        return StatefulBuilder(
+            builder: (context, setLocalState) =>
+                ListView(padding: const EdgeInsets.all(16), children: [
+                  PageHeader(
+                    title: 'Invoicing & Billing',
+                    subtitle: 'Showing ${list.length} invoices',
+                    actions: [
+                      Pill('Egg stock: ${qty(eggStock['available_eggs'])}',
+                          AppColors.primary),
+                      FilledButton.icon(
+                          onPressed: () => _create(
+                              context, reload, asD(eggStock['available_eggs'])),
+                          icon: const Icon(Icons.add),
+                          label: const Text('New invoice')),
+                    ],
+                  ),
+                  if (list.isEmpty)
+                    const EmptyState(
+                        icon: Icons.receipt_long_outlined,
+                        text: 'No invoices yet. Create your first one.'),
+                  for (final i in list)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: AppCard(
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(children: [
+                                Expanded(
+                                    child: Text(
+                                        '${i['invoice_no']}  •  ${i['customer_name']}',
+                                        style: t.textTheme.titleMedium)),
+                                Text(money(i['grand_total']),
+                                    style: t.textTheme.titleMedium?.copyWith(
+                                        color: t.colorScheme.primary)),
+                              ]),
+                              const SizedBox(height: 6),
+                              Row(children: [
+                                Pill(
+                                    kInvoiceTypes[i['invoice_type']] ??
+                                        '${i['invoice_type']}',
+                                    AppColors.yolk),
+                                const SizedBox(width: 8),
+                                Text(
+                                    '${fmtDate(i['invoice_date'])}  •  ${i['items_count']} items',
+                                    style: t.textTheme.bodySmall
+                                        ?.copyWith(color: t.hintColor)),
+                              ]),
+                              const SizedBox(height: 8),
+                              Wrap(spacing: 8, runSpacing: 4, children: [
+                                OutlinedButton.icon(
+                                    onPressed: () => openPdf(context, i),
+                                    icon: const Icon(Icons.picture_as_pdf,
+                                        size: 18),
+                                    label: const Text('PDF')),
+                                FilledButton.icon(
+                                  style: FilledButton.styleFrom(
+                                      backgroundColor: const Color(0xFF25D366),
+                                      foregroundColor: Colors.white),
+                                  onPressed: () =>
+                                      sendWhatsApp(context, i, auth.farmName),
+                                  icon: const Icon(Icons.send, size: 18),
+                                  label: const Text('Send via WhatsApp'),
+                                ),
+                                IconButton(
+                                  icon: Icon(Icons.delete_outline,
+                                      color: t.colorScheme.error),
+                                  onPressed: () async {
+                                    if (!await confirmDelete(
+                                        context, 'invoice ${i['invoice_no']}'))
+                                      return;
+                                    try {
+                                      await ApiClient.instance
+                                          .delete('/invoices/${i['id']}');
+                                      if (context.mounted)
+                                        toast(context,
+                                            'Invoice deleted successfully');
+                                    } catch (e) {
+                                      if (context.mounted)
+                                        toast(context, '$e', error: true);
+                                    }
+                                  },
+                                ),
+                              ]),
+                            ]),
+                      ),
+                    ),
+                  if (hasMore)
+                    Center(
+                      child: TextButton.icon(
+                        onPressed: loadingMore
+                            ? null
+                            : () async {
+                                setLocalState(() => loadingMore = true);
+                                try {
+                                  final next = List<Map<String, dynamic>>.from(
+                                    await ApiClient.instance
+                                        .get('/invoices', query: {
+                                      'limit': '20',
+                                      'offset': '${list.length}',
+                                    }) as List,
+                                  );
+                                  setLocalState(() {
+                                    list.addAll(next);
+                                    hasMore = next.length == 20;
+                                    loadingMore = false;
+                                  });
+                                } catch (error) {
+                                  setLocalState(() => loadingMore = false);
+                                  if (context.mounted) {
+                                    toast(context, '$error', error: true);
+                                  }
+                                }
+                              },
+                        icon: loadingMore
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.expand_more),
+                        label: Text(
+                            loadingMore ? 'Loading...' : 'Load more invoices'),
+                      ),
+                    ),
+                ]));
       },
     );
   }

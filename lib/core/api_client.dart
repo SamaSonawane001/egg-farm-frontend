@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'config.dart';
+import 'http_client.dart';
 
 class ApiException implements Exception {
   final String message;
@@ -15,12 +16,14 @@ class ApiClient {
   ApiClient._();
   static final ApiClient instance = ApiClient._();
   final ValueNotifier<int> mutationVersion = ValueNotifier<int>(0);
+  final http.Client _client = createApiHttpClient();
 
   String? token;
   VoidCallback? onUnauthorized;
 
   Map<String, String> get _headers => {
         'Content-Type': 'application/json',
+        if (!kIsWeb) 'Connection': 'keep-alive',
         if (token != null) 'Authorization': 'Bearer $token',
       };
 
@@ -30,13 +33,13 @@ class ApiClient {
   }
 
   Future<dynamic> get(String path, {Map<String, String>? query}) =>
-      _send(() => http.get(_uri(path, query), headers: _headers));
-  Future<dynamic> post(String path, Map<String, dynamic> body) => _mutate(
-      () => http.post(_uri(path), headers: _headers, body: jsonEncode(body)));
+      _send(() => _client.get(_uri(path, query), headers: _headers));
+  Future<dynamic> post(String path, Map<String, dynamic> body) => _mutate(() =>
+      _client.post(_uri(path), headers: _headers, body: jsonEncode(body)));
   Future<dynamic> put(String path, Map<String, dynamic> body) => _mutate(
-      () => http.put(_uri(path), headers: _headers, body: jsonEncode(body)));
+      () => _client.put(_uri(path), headers: _headers, body: jsonEncode(body)));
   Future<dynamic> delete(String path) =>
-      _mutate(() => http.delete(_uri(path), headers: _headers));
+      _mutate(() => _client.delete(_uri(path), headers: _headers));
 
   Future<dynamic> _mutate(Future<http.Response> Function() call) async {
     final result = await _send(call);
@@ -62,7 +65,7 @@ class ApiClient {
   Future<dynamic> _send(Future<http.Response> Function() call) async {
     http.Response r;
     try {
-      r = await call().timeout(const Duration(seconds: 30));
+      r = await call().timeout(const Duration(seconds: 10));
     } catch (_) {
       throw ApiException(
           'Cannot reach the server. Check your internet / API address.');

@@ -14,6 +14,7 @@ class DashboardScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthState>();
     return DataLoader<Map<String, dynamic>>(
+      cacheKey: 'dashboard:${auth.user?['id'] ?? 'current'}',
       load: () async => Map<String, dynamic>.from(await ApiClient.instance
           .get('/dashboard', query: {'today': today()})),
       builder: (context, d, reload) {
