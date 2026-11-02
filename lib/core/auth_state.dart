@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -70,8 +69,8 @@ class AuthState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> login(String mobile, String password) async =>
-      _accept(await _api.post('/auth/login', {'mobile': mobile, 'password': password}));
+  Future<void> login(String mobile, String password) async => _accept(
+      await _api.post('/auth/login', {'mobile': mobile, 'password': password}));
 
   Future<void> register({
     required String mobile,
@@ -84,16 +83,70 @@ class AuthState extends ChangeNotifier {
       _accept(await _api.multipart(
         'POST',
         '/auth/register',
-        {'mobile': mobile, 'password': password, 'owner_name': ownerName, 'farm_name': farmName},
+        {
+          'mobile': mobile,
+          'password': password,
+          'owner_name': ownerName,
+          'farm_name': farmName
+        },
         fileBytes: avatar,
-        fileName: avatarName,
+        fileName: avatar == null
+            ? avatarName
+            : _normalizeAvatarFilename(avatar, avatarName),
       ));
 
-  Future<void> updateProfile(Map<String, String> fields, {Uint8List? avatar, String? avatarName}) async {
-    final res = await _api.multipart('PUT', '/profile', fields, fileBytes: avatar, fileName: avatarName);
-    user = Map<String, dynamic>.from(res);
-    await (await SharedPreferences.getInstance()).setString('user', jsonEncode(user));
+  Future<void> updateProfile(Map<String, String> fields,
+      {Uint8List? avatar, String? avatarName}) async {
+    if (avatar != null) await uploadAvatar(avatar, avatarName: avatarName);
+    user = Map<String, dynamic>.from(await _api.put('/profile', fields));
+    await (await SharedPreferences.getInstance())
+        .setString('user', jsonEncode(user));
     notifyListeners();
+  }
+
+  Future<void> uploadAvatar(Uint8List avatar, {String? avatarName}) async {
+    final res = Map<String, dynamic>.from(await _api.multipart(
+      'POST',
+      '/profile/upload-avatar',
+      const {},
+      fileBytes: avatar,
+      fileName: _normalizeAvatarFilename(avatar, avatarName),
+    ));
+    final updatedUser = Map<String, dynamic>.from(res['user']);
+    updatedUser['avatar_url'] = res['avatarUrl'];
+    user = updatedUser;
+    await (await SharedPreferences.getInstance())
+        .setString('user', jsonEncode(user));
+    notifyListeners();
+  }
+
+  String _normalizeAvatarFilename(Uint8List bytes, String? filename) {
+    final name = (filename ?? 'avatar').split(RegExp(r'[/\\]')).last;
+    final dot = name.lastIndexOf('.');
+    final stem = dot > 0 ? name.substring(0, dot) : name;
+    final extension = bytes.length >= 3 &&
+            bytes[0] == 0xff &&
+            bytes[1] == 0xd8 &&
+            bytes[2] == 0xff
+        ? '.jpg'
+        : bytes.length >= 8 &&
+                bytes[0] == 0x89 &&
+                bytes[1] == 0x50 &&
+                bytes[2] == 0x4e &&
+                bytes[3] == 0x47 &&
+                bytes[4] == 0x0d &&
+                bytes[5] == 0x0a &&
+                bytes[6] == 0x1a &&
+                bytes[7] == 0x0a
+            ? '.png'
+            : bytes.length >= 12 &&
+                    String.fromCharCodes(bytes.sublist(0, 4)) == 'RIFF' &&
+                    String.fromCharCodes(bytes.sublist(8, 12)) == 'WEBP'
+                ? '.webp'
+                : dot > 0
+                    ? name.substring(dot).toLowerCase()
+                    : '.jpg';
+    return '$stem$extension';
   }
 
   Future<void> logout() async {

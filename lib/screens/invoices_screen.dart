@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../core/api_client.dart';
 import '../core/auth_state.dart';
 import '../core/config.dart';
+import '../core/invoice_pdf_file.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
 
@@ -30,33 +33,54 @@ Future<void> openPdf(BuildContext c, Map<String, dynamic> inv) async {
 
 Future<void> sendWhatsApp(
     BuildContext c, Map<String, dynamic> inv, String farmName) async {
-  var phone =
-      '${inv['customer_mobile'] ?? ''}'.replaceAll(RegExp(r'[^0-9]'), '');
-  if (phone.length == 10) phone = '$kDefaultCountryCode$phone';
   final items = List<Map<String, dynamic>>.from(inv['items'] ?? const []);
-  final itemLines = items.map(_whatsAppLine).join('\n');
+  final itemLines = items
+      .map((item) => _whatsAppLine(item, inv['invoice_type'] == 'egg_sale'))
+      .join('\n');
   final msg = 'Hello ${inv['customer_name']},\n'
       'Invoice ${inv['invoice_no']} from $farmName\n'
       'Date: ${fmtDate(inv['invoice_date'])}\n'
-      '${itemLines.isEmpty ? '' : '\n$itemLines\n'}'
-      'Total: ${money(inv['grand_total'])}\n\n'
-      'View / download your invoice: ${pdfUrl(inv)}';
-  final uri =
-      Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(msg)}');
-  if (!await launchUrl(uri, mode: LaunchMode.externalApplication) &&
-      c.mounted) {
-    toast(c, 'Could not open WhatsApp', error: true);
+      '\n$itemLines\n'
+      'Total: ${money(inv['grand_total'])}';
+
+  try {
+    final response = await http
+        .get(Uri.parse(pdfUrl(inv)))
+        .timeout(const Duration(seconds: 30));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('PDF download failed (${response.statusCode})');
+    }
+    if (response.bodyBytes.length < 5 ||
+        String.fromCharCodes(response.bodyBytes.take(5)) != '%PDF-') {
+      throw Exception('The server did not return a valid PDF');
+    }
+
+    final file =
+        await createInvoicePdfFile(response.bodyBytes, '${inv['invoice_no']}');
+    await Share.shareXFiles(
+      [file],
+      text: msg,
+      subject: 'Invoice ${inv['invoice_no']}',
+    );
+  } catch (e) {
+    debugPrint('Error sharing invoice PDF: $e');
+    if (c.mounted) {
+      toast(c, 'Could not share the invoice PDF. Please try again.',
+          error: true);
+    }
   }
 }
 
-String _whatsAppLine(Map<String, dynamic> item) {
+String _whatsAppLine(Map<String, dynamic> item, bool isEggSale) {
   final unit = '${item['egg_unit'] ?? ''}';
-  if (unit != 'crate' && unit != 'tray') {
+  if (!isEggSale) {
     return '${item['description']}: ${qty(item['quantity'])} @ ${money(item['unit_price'])} = ${money(item['amount'])}';
   }
-  final unitName = unit == 'crate' ? 'Crates' : 'Trays';
-  return '${qty(item['quantity'])} $unitName (${qty(item['egg_quantity'])} eggs) '
-      '@ ${money(item['unit_price'])} / egg = ${money(item['amount'])}';
+  final quantityDetails = unit == 'tray' || unit == 'crate'
+      ? '${qty(item['quantity'])} ${unit == 'crate' ? 'Crates' : 'Trays'} '
+          '(${qty(item['egg_quantity'])} eggs)'
+      : '${qty(item['egg_quantity'] ?? item['quantity'])} eggs';
+  return '$quantityDetails @ ${money(item['unit_price'])}/egg = ${money(item['amount'])}';
 }
 
 class InvoicesScreen extends StatelessWidget {

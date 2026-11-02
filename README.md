@@ -4,6 +4,10 @@
 
 The app defaults to `https://egg-farm-backend.onrender.com/api` on Web, Android, and iOS. To target a different backend, pass a complete API base URL ending in `/api` with `--dart-define=API_BASE=...`.
 
+## Invoice sharing
+
+The invoice share action downloads the generated PDF and opens the native share sheet with the PDF attached and invoice details as the message text. Choose WhatsApp in the share sheet to send the attachment and summary together; no PDF URL is added to the message.
+
 ## Web Deployment
 
 From `frontend/`, build the production Flutter Web bundle locally:

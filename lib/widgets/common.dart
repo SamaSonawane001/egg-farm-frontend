@@ -338,7 +338,7 @@ class FarmAvatar extends StatelessWidget {
     final fallback = CircleAvatar(
       radius: radius,
       backgroundColor: cs.primary.withOpacity(.14),
-      child: Text(name.isEmpty ? '?' : name[0].toUpperCase(),
+      child: Text(name.trim().isEmpty ? 'A' : name.trim()[0].toUpperCase(),
           style: TextStyle(
               color: cs.primary,
               fontWeight: FontWeight.w700,
@@ -351,6 +351,7 @@ class FarmAvatar extends StatelessWidget {
         height: radius * 2,
         child: Image.network(
           full,
+          key: ValueKey(full),
           fit: BoxFit.cover,
           loadingBuilder: (context, child, progress) {
             if (progress == null) return child;
