@@ -31,18 +31,73 @@ Future<void> openPdf(BuildContext c, Map<String, dynamic> inv) async {
   }
 }
 
-Future<void> sendWhatsApp(
-    BuildContext c, Map<String, dynamic> inv, String farmName) async {
+String? _whatsAppPhone(dynamic value) {
+  var phone = '$value'.replaceAll(RegExp(r'[^0-9]'), '');
+  if (phone.startsWith('00')) phone = phone.substring(2);
+  if (phone.length == 10) return '$kDefaultCountryCode$phone';
+  if (phone.length == 11 && phone.startsWith('0')) {
+    return '$kDefaultCountryCode${phone.substring(1)}';
+  }
+  if (phone.length == 12 && phone.startsWith(kDefaultCountryCode)) {
+    return phone;
+  }
+  return null;
+}
+
+String _invoiceShareMessage(Map<String, dynamic> inv, String farmName) {
   final items = List<Map<String, dynamic>>.from(inv['items'] ?? const []);
   final itemLines = items
       .map((item) => _whatsAppLine(item, inv['invoice_type'] == 'egg_sale'))
       .join('\n');
-  final msg = 'Hello ${inv['customer_name']},\n'
+  return 'Hello ${inv['customer_name']},\n'
       'Invoice ${inv['invoice_no']} from $farmName\n'
       'Date: ${fmtDate(inv['invoice_date'])}\n'
       '\n$itemLines\n'
       'Total: ${money(inv['grand_total'])}';
+}
 
+Future<void> sendWhatsApp(
+    BuildContext c, Map<String, dynamic> inv, String farmName) async {
+  final phone = _whatsAppPhone(inv['customer_mobile']);
+  if (phone == null) {
+    if (c.mounted) {
+      toast(c, 'Enter a valid customer WhatsApp number to continue.',
+          error: true);
+    }
+    return;
+  }
+
+  final message = _invoiceShareMessage(inv, farmName);
+  final directUri = Uri(
+    scheme: 'whatsapp',
+    host: 'send',
+    queryParameters: {'phone': phone, 'text': message},
+  );
+  try {
+    if (await launchUrl(directUri, mode: LaunchMode.externalApplication)) {
+      return;
+    }
+  } catch (e) {
+    debugPrint('Could not launch WhatsApp app URI: $e');
+  }
+
+  final fallbackUri = Uri.https('api.whatsapp.com', '/send', {
+    'phone': phone,
+    'text': message,
+  });
+  try {
+    if (!await launchUrl(fallbackUri, mode: LaunchMode.externalApplication) &&
+        c.mounted) {
+      toast(c, 'Could not open WhatsApp.', error: true);
+    }
+  } catch (e) {
+    debugPrint('Could not open WhatsApp web fallback: $e');
+    if (c.mounted) toast(c, 'Could not open WhatsApp.', error: true);
+  }
+}
+
+Future<void> shareInvoicePdf(
+    BuildContext c, Map<String, dynamic> inv, String farmName) async {
   try {
     final response = await http
         .get(Uri.parse(pdfUrl(inv)))
@@ -59,7 +114,7 @@ Future<void> sendWhatsApp(
         await createInvoicePdfFile(response.bodyBytes, '${inv['invoice_no']}');
     await Share.shareXFiles(
       [file],
-      text: msg,
+      text: _invoiceShareMessage(inv, farmName),
       subject: 'Invoice ${inv['invoice_no']}',
     );
   } catch (e) {
@@ -103,8 +158,20 @@ class InvoicesScreen extends StatelessWidget {
       context: context,
       builder: (c) => AlertDialog(
         title: Text('${created['invoice_no']} created'),
-        content: Text(
-            'Total ${money(created['grand_total'])}. Share it with ${created['customer_name']}?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+                'Total ${money(created['grand_total'])}. Share it with ${created['customer_name']}?'),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () => shareInvoicePdf(c, created, auth.farmName),
+              icon: const Icon(Icons.attach_file),
+              label: const Text('Share PDF File'),
+            ),
+          ],
+        ),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(c), child: const Text('Later')),
@@ -193,6 +260,12 @@ class InvoicesScreen extends StatelessWidget {
                             onPressed: () => openPdf(context, i),
                             icon: const Icon(Icons.picture_as_pdf, size: 18),
                             label: const Text('PDF')),
+                        OutlinedButton.icon(
+                          onPressed: () =>
+                              shareInvoicePdf(context, i, auth.farmName),
+                          icon: const Icon(Icons.attach_file, size: 18),
+                          label: const Text('Share PDF File'),
+                        ),
                         FilledButton.icon(
                           style: FilledButton.styleFrom(
                               backgroundColor: const Color(0xFF25D366),
