@@ -77,6 +77,30 @@ Future<void> sendWhatsApp(
   }
 
   final message = _invoiceShareMessage(inv, farmName);
+  if (kIsWeb ||
+      (defaultTargetPlatform != TargetPlatform.android &&
+          defaultTargetPlatform != TargetPlatform.iOS)) {
+    final webMessage = '$message\n\nView/Download Invoice: ${pdfUrl(inv)}';
+    final whatsappUri = Uri.https('api.whatsapp.com', '/send', {
+      'phone': phone,
+      'text': webMessage,
+    });
+    try {
+      if (!await launchUrl(
+        whatsappUri,
+        mode: LaunchMode.externalApplication,
+      )) {
+        throw Exception('WhatsApp could not be opened');
+      }
+    } catch (error) {
+      debugPrint('Could not open WhatsApp Web: $error');
+      if (c.mounted) {
+        toast(c, 'Could not open WhatsApp.', error: true);
+      }
+    }
+    return;
+  }
+
   XFile pdfFile;
   try {
     final response = await http
@@ -103,7 +127,7 @@ Future<void> sendWhatsApp(
     return;
   }
 
-  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+  if (defaultTargetPlatform == TargetPlatform.android) {
     try {
       final shared = await _whatsAppChannel.invokeMethod<bool>(
         'shareInvoiceToWhatsApp',
@@ -119,32 +143,6 @@ Future<void> sendWhatsApp(
     }
   }
 
-  final directUri = Uri(
-    scheme: 'whatsapp',
-    host: 'send',
-    queryParameters: {'phone': phone, 'text': message},
-  );
-  var chatOpened = false;
-  try {
-    chatOpened =
-        await launchUrl(directUri, mode: LaunchMode.externalApplication);
-  } catch (e) {
-    debugPrint('Could not launch WhatsApp app URI: $e');
-  }
-
-  if (!chatOpened) {
-    final fallbackUri = Uri.https('api.whatsapp.com', '/send', {
-      'phone': phone,
-      'text': message,
-    });
-    try {
-      chatOpened =
-          await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
-    } catch (e) {
-      debugPrint('Could not open WhatsApp web fallback: $e');
-    }
-  }
-
   try {
     await Share.shareXFiles(
       [pdfFile],
@@ -156,9 +154,7 @@ Future<void> sendWhatsApp(
     if (c.mounted) {
       toast(
         c,
-        chatOpened
-            ? 'WhatsApp opened, but the invoice PDF could not be shared.'
-            : 'Could not open WhatsApp or share the invoice PDF.',
+        'Could not share the invoice PDF. Please try again.',
         error: true,
       );
     }
