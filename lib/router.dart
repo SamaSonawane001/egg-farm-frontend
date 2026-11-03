@@ -68,7 +68,7 @@ GoRouter buildRouter(AuthState auth) {
           GoRoute(
             path: '/raw-materials/:materialId',
             pageBuilder: (_, state) => page(RawMaterialDetailScreen(
-              materialId: int.parse(state.pathParameters['materialId']!),
+              materialId: state.pathParameters['materialId']!,
               materialName: (state.extra as Map<String, String>?)?['name'],
               unit: (state.extra as Map<String, String>?)?['unit'],
             )),
@@ -79,7 +79,7 @@ GoRouter buildRouter(AuthState auth) {
           GoRoute(
             path: '/medicines/:medicineId',
             pageBuilder: (_, state) => page(MedicineDetailScreen(
-              medicineId: int.parse(state.pathParameters['medicineId']!),
+              medicineId: state.pathParameters['medicineId']!,
               medicineName: (state.extra as Map<String, String>?)?['name'],
               unit: (state.extra as Map<String, String>?)?['unit'],
             )),
@@ -87,7 +87,7 @@ GoRouter buildRouter(AuthState auth) {
           GoRoute(
             path: '/feed/:productId',
             pageBuilder: (_, state) => page(FeedProductDetailScreen(
-                productId: int.parse(state.pathParameters['productId']!))),
+                productId: state.pathParameters['productId']!)),
           ),
           GoRoute(
               path: '/eggs', pageBuilder: (_, __) => page(const EggsScreen())),

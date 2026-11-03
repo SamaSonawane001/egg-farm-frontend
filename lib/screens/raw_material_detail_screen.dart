@@ -7,7 +7,7 @@ import '../widgets/common.dart';
 import '../widgets/form_dialog.dart';
 
 class RawMaterialDetailScreen extends StatefulWidget {
-  final int materialId;
+  final String materialId;
   final String? materialName;
   final String? unit;
 

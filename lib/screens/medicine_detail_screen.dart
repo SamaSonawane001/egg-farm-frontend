@@ -15,7 +15,7 @@ const _adminRoutes = [
 ];
 
 class MedicineDetailScreen extends StatefulWidget {
-  final int medicineId;
+  final String medicineId;
   final String? medicineName;
   final String? unit;
 
@@ -231,7 +231,7 @@ class _MedicineDetailScreenState extends State<MedicineDetailScreen> {
         await ApiClient.instance.post(
           '/medicines/${widget.medicineId}/usage',
           {
-            'flock_id': int.parse(values['flock_id']!),
+            'flock_id': values['flock_id']!,
             'quantity': double.parse(values['quantity']!),
             'unit': medicine['unit'],
             'admin_route': values['admin_route'],

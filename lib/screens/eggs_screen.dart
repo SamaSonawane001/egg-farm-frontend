@@ -124,7 +124,7 @@ class _EggsScreenState extends State<EggsScreen> {
         savedDate = DateTime.parse(v['collection_date']!);
         final body = {
           'collection_date': v['collection_date'],
-          'batch_id': v['batch_id']!.isEmpty ? null : int.parse(v['batch_id']!),
+          'batch_id': v['batch_id']!.isEmpty ? null : v['batch_id']!,
           'trays_count': numberOrZero(v['trays_count']),
           'loose_eggs': numberOrZero(v['loose_eggs']),
           'damaged_eggs': numberOrZero(v['damaged_eggs']),

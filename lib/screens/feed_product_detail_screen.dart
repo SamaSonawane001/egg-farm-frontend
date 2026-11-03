@@ -6,7 +6,7 @@ import '../widgets/common.dart';
 import '../widgets/form_dialog.dart';
 
 class FeedProductDetailScreen extends StatefulWidget {
-  final int productId;
+  final String productId;
   const FeedProductDetailScreen({super.key, required this.productId});
 
   @override
@@ -112,9 +112,7 @@ class _FeedProductDetailScreenState extends State<FeedProductDetailScreen> {
         final body = {
           'feed_product_id': widget.productId,
           'usage_date': values['usage_date'],
-          'batch_id': values['batch_id']!.isEmpty
-              ? null
-              : int.parse(values['batch_id']!),
+          'batch_id': values['batch_id']!.isEmpty ? null : values['batch_id']!,
           'quantity': double.parse(values['quantity']!),
           'unit': values['unit'],
         };

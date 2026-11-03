@@ -44,7 +44,7 @@ InputDecoration dec(BuildContext c, String label,
     {String? hint, IconData? icon, String? prefix}) {
   final cs = Theme.of(c).colorScheme;
   OutlineInputBorder b(Color col, [double w = 1]) => OutlineInputBorder(
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(13),
       borderSide: BorderSide(color: col, width: w));
   return InputDecoration(
     labelText: label,
@@ -52,7 +52,7 @@ InputDecoration dec(BuildContext c, String label,
     prefixIcon: icon == null ? null : Icon(icon, size: 20),
     prefixText: prefix,
     isDense: true,
-    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
     border: b(cs.outline),
     enabledBorder: b(cs.outline),
     focusedBorder: b(cs.primary, 1.6),
@@ -107,12 +107,21 @@ class AppCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: padding,
       decoration: BoxDecoration(
         color: color ?? cs.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outline),
+        borderRadius: BorderRadius.circular(16),
+        border:
+            Border.all(color: cs.outline.withValues(alpha: isDark ? .82 : .72)),
+        boxShadow: [
+          BoxShadow(
+            color: cs.shadow.withValues(alpha: isDark ? .16 : .045),
+            blurRadius: 22,
+            offset: const Offset(0, 7),
+          ),
+        ],
       ),
       child: child,
     );
@@ -141,7 +150,7 @@ class StatCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-                color: c.withOpacity(.12),
+                color: c.withValues(alpha: .12),
                 borderRadius: BorderRadius.circular(10)),
             child: Icon(icon, size: 20, color: c),
           ),
@@ -393,10 +402,10 @@ class Pill extends StatelessWidget {
   const Pill(this.text, this.color, {super.key});
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-            color: color.withOpacity(.14),
-            borderRadius: BorderRadius.circular(20)),
+            color: color.withValues(alpha: .14),
+            borderRadius: BorderRadius.circular(30)),
         child: Text(text,
             style: TextStyle(
                 color: color, fontSize: 11, fontWeight: FontWeight.w700)),
@@ -513,7 +522,7 @@ class FarmAvatar extends StatelessWidget {
         : (url!.startsWith('http') ? url! : '$kApiOrigin$url');
     final fallback = CircleAvatar(
       radius: radius,
-      backgroundColor: cs.primary.withOpacity(.14),
+      backgroundColor: cs.primary.withValues(alpha: .14),
       child: Text(name.trim().isEmpty ? 'A' : name.trim()[0].toUpperCase(),
           style: TextStyle(
               color: cs.primary,
