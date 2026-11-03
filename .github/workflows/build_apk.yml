@@ -1,42 +1,38 @@
-name: Build and Release APK
+name: Build Android release APK
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
-  build-apk:
-    name: Build Android release APK
+  build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Java 17
+      - name: Set up Java
         uses: actions/setup-java@v4
         with:
-          distribution: zulu
+          distribution: 'zulu'
           java-version: '17'
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          channel: 'stable'
           cache: true
 
-      - name: Get Flutter dependencies
-        working-directory: frontend
+      - name: Install dependencies
         run: flutter pub get
 
-      - name: Build release APK
-        working-directory: frontend
+      - name: Build APK
         run: flutter build apk --release
 
-      - name: Upload release APK
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: egg-farm-release-apk
-          path: frontend/build/app/outputs/flutter-apk/app-release.apk
-          retention-days: 30
+          name: app-release
+          path: build/app/outputs/flutter-apk/app-release.apk
