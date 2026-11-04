@@ -32,6 +32,8 @@ Future<bool> showFormDialog(
   Map<String, dynamic> initial = const {},
   String Function(Map<String, String> values)? preview,
   Widget Function(BuildContext context)? extraContentBuilder,
+  VoidCallback? onSaveAttempt,
+  bool Function(Object error)? isSubmitErrorHandled,
   required Future<void> Function(Map<String, String> values) onSubmit,
 }) async {
   final r = await showDialog<bool>(
@@ -43,6 +45,8 @@ Future<bool> showFormDialog(
         initial: initial,
         preview: preview,
         extraContentBuilder: extraContentBuilder,
+        onSaveAttempt: onSaveAttempt,
+        isSubmitErrorHandled: isSubmitErrorHandled,
         onSubmit: onSubmit),
   );
   return r == true;
@@ -54,6 +58,8 @@ class _FormDialog extends StatefulWidget {
   final Map<String, dynamic> initial;
   final String Function(Map<String, String>)? preview;
   final Widget Function(BuildContext context)? extraContentBuilder;
+  final VoidCallback? onSaveAttempt;
+  final bool Function(Object error)? isSubmitErrorHandled;
   final Future<void> Function(Map<String, String>) onSubmit;
   const _FormDialog(
       {required this.title,
@@ -61,6 +67,8 @@ class _FormDialog extends StatefulWidget {
       required this.initial,
       this.preview,
       this.extraContentBuilder,
+      this.onSaveAttempt,
+      this.isSubmitErrorHandled,
       required this.onSubmit});
   @override
   State<_FormDialog> createState() => _FormDialogState();
@@ -127,10 +135,11 @@ class _FormDialogState extends State<_FormDialog> {
       };
 
   Future<void> _submit() async {
+    widget.onSaveAttempt?.call();
+    setState(() => _error = null);
     if (!_form.currentState!.validate()) return;
     setState(() {
       _saving = true;
-      _error = null;
     });
     try {
       await widget.onSubmit(_collect());
@@ -139,7 +148,7 @@ class _FormDialogState extends State<_FormDialog> {
       if (mounted) {
         setState(() {
           _saving = false;
-          _error = '$e';
+          _error = widget.isSubmitErrorHandled?.call(e) == true ? null : '$e';
         });
       }
     }

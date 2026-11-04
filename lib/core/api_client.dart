@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'config.dart';
 import 'http_client.dart';
 
@@ -41,31 +42,39 @@ class ApiClient {
   Future<dynamic> delete(String path) =>
       _mutate(() => _client.delete(_uri(path), headers: _headers));
 
-  Future<dynamic> _mutate(Future<http.Response> Function() call) async {
-    final result = await _send(call);
+  Future<dynamic> _mutate(Future<http.Response> Function() call,
+      {String? fallbackError,
+      Duration timeout = const Duration(seconds: 10)}) async {
+    final result =
+        await _send(call, fallbackError: fallbackError, timeout: timeout);
     mutationVersion.value++;
     return result;
   }
 
   Future<dynamic> multipart(
       String method, String path, Map<String, String> fields,
-      {Uint8List? fileBytes, String? fileName, String fileField = 'avatar'}) {
+      {Uint8List? fileBytes,
+      String? fileName,
+      String fileField = 'avatar',
+      MediaType? contentType}) {
     return _mutate(() async {
       final req = http.MultipartRequest(method, _uri(path));
       if (token != null) req.headers['Authorization'] = 'Bearer $token';
       req.fields.addAll(fields);
       if (fileBytes != null) {
         req.files.add(http.MultipartFile.fromBytes(fileField, fileBytes,
-            filename: fileName ?? 'avatar.jpg'));
+            filename: fileName ?? 'avatar.jpg', contentType: contentType));
       }
       return http.Response.fromStream(await req.send());
-    });
+    }, fallbackError: 'Upload failed', timeout: const Duration(seconds: 60));
   }
 
-  Future<dynamic> _send(Future<http.Response> Function() call) async {
+  Future<dynamic> _send(Future<http.Response> Function() call,
+      {String? fallbackError,
+      Duration timeout = const Duration(seconds: 10)}) async {
     http.Response r;
     try {
-      r = await call().timeout(const Duration(seconds: 10));
+      r = await call().timeout(timeout);
     } catch (_) {
       throw ApiException(
           'Cannot reach the server. Check your internet / API address.');
@@ -75,13 +84,18 @@ class ApiClient {
       body = r.body.isEmpty ? null : jsonDecode(utf8.decode(r.bodyBytes));
     } catch (_) {}
     if (r.statusCode >= 200 && r.statusCode < 300) {
+      if (body is Map && body.containsKey('pagination')) {
+        return {'data': body['data'], 'pagination': body['pagination']};
+      }
       return body is Map && body.containsKey('data') ? body['data'] : body;
     }
     if (r.statusCode == 401 && token != null) onUnauthorized?.call();
     throw ApiException(
-        body is Map && body['error'] != null
-            ? body['error'].toString()
-            : 'Request failed (${r.statusCode})',
+        body is Map && body['message'] != null
+            ? body['message'].toString()
+            : body is Map && body['error'] != null
+                ? body['error'].toString()
+                : '${fallbackError ?? 'Request failed'} (${r.statusCode})',
         r.statusCode);
   }
 }

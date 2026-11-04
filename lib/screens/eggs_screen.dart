@@ -24,23 +24,29 @@ class _EggsScreenState extends State<EggsScreen> {
     _selectedDate = DateTime(now.year, now.month, now.day);
   }
 
+  Map<String, String> _productionQuery() {
+    final month = DateFormat('yyyy-MM').format(_selectedDate);
+    return _wholeMonth
+        ? {'month': month}
+        : {'date': DateFormat('yyyy-MM-dd').format(_selectedDate)};
+  }
+
   Future<Map<String, dynamic>> _load() async {
     final api = ApiClient.instance;
     final month = DateFormat('yyyy-MM').format(_selectedDate);
-    final dailyQuery = _wholeMonth
-        ? <String, String>{'month': month}
-        : <String, String>{
-            'date': DateFormat('yyyy-MM-dd').format(_selectedDate)
-          };
+    final dailyQuery = _productionQuery();
     final r = await Future.wait([
       api.get('/eggs/summary', query: {'today': today()}),
-      api.get('/eggs', query: dailyQuery),
+      api.get('/eggs', query: {...dailyQuery, 'page': '1', 'limit': '20'}),
       api.get('/flock/batches'),
       api.get('/eggs/monthly', query: {'month': month}),
     ]);
+    final productionResponse = Map<String, dynamic>.from(r[1] as Map);
     return {
       'summary': Map<String, dynamic>.from(r[0] as Map),
-      'rows': List<Map<String, dynamic>>.from(r[1] as List),
+      'rows':
+          List<Map<String, dynamic>>.from(productionResponse['data'] as List),
+      'pagination': productionResponse['pagination'],
       'batches': List<Map<String, dynamic>>.from(r[2] as List),
       'monthly': Map<String, dynamic>.from(r[3] as Map),
     };
@@ -186,189 +192,255 @@ class _EggsScreenState extends State<EggsScreen> {
         final rows = data['rows'] as List<Map<String, dynamic>>;
         final batches = data['batches'] as List<Map<String, dynamic>>;
         final monthly = data['monthly'] as Map<String, dynamic>;
+        var nextPage = 1;
+        var hasMore =
+            (data['pagination'] as Map<String, dynamic>)['hasMore'] == true;
+        var loadingMore = false;
+        final dailyQuery = _productionQuery();
         final t = Theme.of(context);
-        return ListView(padding: const EdgeInsets.all(16), children: [
-          PageHeader(
-            title: 'Egg Production & Sales Matrix',
-            subtitle:
-                'Tray-based daily production tracking and available stock',
-            actions: [
-              FilledButton.icon(
-                onPressed: () => _form(
-                  context,
-                  batches,
-                  configuredEggsPerTray,
-                  reload: reload,
-                ),
-                icon: const Icon(Icons.add),
-                label: const Text('Add entry'),
-              ),
-            ],
-          ),
-          AppCard(
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Total Eggs Produced', style: t.textTheme.titleMedium),
-              const SizedBox(height: 4),
-              Text(qty(s['all_time_eggs']),
-                  style: t.textTheme.headlineMedium
-                      ?.copyWith(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 10),
-              Wrap(spacing: 8, runSpacing: 8, children: [
-                Chip(
-                  avatar: const Icon(Icons.check_circle_outline, size: 18),
-                  label: Text('Net Good Eggs: ${qty(s['all_time_net'])}'),
-                ),
-                Chip(
-                  avatar: Icon(Icons.broken_image_outlined,
-                      size: 18, color: t.colorScheme.error),
-                  label: Text('Damaged Eggs: ${qty(s['all_time_damaged'])}'),
-                ),
-              ]),
-            ]),
-          ),
-          const SizedBox(height: 12),
-          AppCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Collection date',
-                    style: t.textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w700)),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    OutlinedButton.icon(
-                      onPressed: () => _pickDate(context, reload),
-                      icon: const Icon(Icons.calendar_month_outlined),
-                      label:
-                          Text(DateFormat('dd MMM yyyy').format(_selectedDate)),
-                    ),
-                    ActionChip(
-                      avatar: const Icon(Icons.today_outlined, size: 18),
-                      label: const Text('Today'),
-                      onPressed: () => _selectDate(DateTime.now(), reload),
-                    ),
-                    ActionChip(
-                      avatar: const Icon(Icons.history_outlined, size: 18),
-                      label: const Text('Yesterday'),
-                      onPressed: () => _selectDate(
-                        DateTime.now().subtract(const Duration(days: 1)),
-                        reload,
-                      ),
-                    ),
-                    FilterChip(
-                      avatar: const Icon(Icons.calendar_view_month, size: 18),
-                      label: const Text('View Whole Month'),
-                      selected: _wholeMonth,
-                      onSelected: (selected) {
-                        setState(() => _wholeMonth = selected);
-                        reload();
-                      },
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          if (_wholeMonth) ...[
-            const SizedBox(height: 12),
-            _MonthSubtotal(month: monthly),
-          ],
-          const SizedBox(height: 16),
-          if (rows.isEmpty)
-            EmptyState(
-                icon: Icons.egg_outlined,
-                text: _wholeMonth
-                    ? 'No egg collection records for ${DateFormat('MMMM yyyy').format(_selectedDate)}.'
-                    : 'No egg collection recorded on ${DateFormat('dd MMM yyyy').format(_selectedDate)}. Click "+ Add entry" to log collection.')
-          else
-            for (final e in rows)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: AppCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              DateFormat('dd MMM yyyy').format(
-                                  DateTime.parse('${e['collection_date']}')),
-                              style: t.textTheme.titleMedium
-                                  ?.copyWith(fontWeight: FontWeight.w700),
-                            ),
-                          ),
-                          IconButton(
-                            tooltip: 'Edit',
-                            icon: const Icon(Icons.edit_outlined, size: 20),
-                            onPressed: () => _form(
-                              context,
-                              batches,
-                              configuredEggsPerTray,
-                              e: e,
-                              reload: reload,
-                            ),
-                          ),
-                          IconButton(
-                            tooltip: 'Delete',
-                            icon: Icon(Icons.delete_outline,
-                                size: 20, color: t.colorScheme.error),
-                            onPressed: () async {
-                              if (!await confirmDelete(
-                                  context, 'this egg record')) {
-                                return;
-                              }
-                              try {
-                                await ApiClient.instance
-                                    .delete('/eggs/${e['id']}');
-                                if (context.mounted) {
-                                  toast(context,
-                                      'Egg record deleted successfully');
-                                }
-                              } catch (err) {
-                                if (context.mounted) {
-                                  toast(context, '$err', error: true);
-                                }
-                              }
-                            },
-                          ),
-                        ],
-                      ),
-                      Text(
-                        '${qty(e['trays_count'])} trays + ${qty(e['loose_eggs'])} loose',
-                        style: t.textTheme.bodyMedium,
-                      ),
-                      const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 8,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          _EggMetric(
-                              label: 'Total collected',
-                              value: qty(e['total_eggs'])),
-                          _EggMetric(
-                            label: 'Damaged',
-                            value: qty(e['damaged_eggs']),
-                            damaged: true,
-                          ),
-                          _EggMetric(
-                            label: 'Net saleable',
-                            value: qty(e['net_eggs']),
-                            prominent: true,
-                          ),
-                        ],
+        return StatefulBuilder(
+            builder: (context, setLocalState) =>
+                ListView(padding: const EdgeInsets.all(16), children: [
+                  PageHeader(
+                    title: 'Egg Production & Sales Matrix',
+                    subtitle:
+                        'Tray-based daily production tracking and available stock',
+                    actions: [
+                      FilledButton.icon(
+                        onPressed: () => _form(
+                          context,
+                          batches,
+                          configuredEggsPerTray,
+                          reload: reload,
+                        ),
+                        icon: const Icon(Icons.add),
+                        label: const Text('Add entry'),
                       ),
                     ],
                   ),
-                ),
-              ),
-        ]);
+                  AppCard(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Total Eggs Produced',
+                              style: t.textTheme.titleMedium),
+                          const SizedBox(height: 4),
+                          Text(qty(s['all_time_eggs']),
+                              style: t.textTheme.headlineMedium
+                                  ?.copyWith(fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 10),
+                          Wrap(spacing: 8, runSpacing: 8, children: [
+                            Chip(
+                              avatar: const Icon(Icons.check_circle_outline,
+                                  size: 18),
+                              label: Text(
+                                  'Net Good Eggs: ${qty(s['all_time_net'])}'),
+                            ),
+                            Chip(
+                              avatar: Icon(Icons.broken_image_outlined,
+                                  size: 18, color: t.colorScheme.error),
+                              label: Text(
+                                  'Damaged Eggs: ${qty(s['all_time_damaged'])}'),
+                            ),
+                          ]),
+                        ]),
+                  ),
+                  const SizedBox(height: 12),
+                  AppCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Collection date',
+                            style: t.textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: () => _pickDate(context, reload),
+                              icon: const Icon(Icons.calendar_month_outlined),
+                              label: Text(DateFormat('dd MMM yyyy')
+                                  .format(_selectedDate)),
+                            ),
+                            ActionChip(
+                              avatar:
+                                  const Icon(Icons.today_outlined, size: 18),
+                              label: const Text('Today'),
+                              onPressed: () =>
+                                  _selectDate(DateTime.now(), reload),
+                            ),
+                            ActionChip(
+                              avatar:
+                                  const Icon(Icons.history_outlined, size: 18),
+                              label: const Text('Yesterday'),
+                              onPressed: () => _selectDate(
+                                DateTime.now()
+                                    .subtract(const Duration(days: 1)),
+                                reload,
+                              ),
+                            ),
+                            FilterChip(
+                              avatar: const Icon(Icons.calendar_view_month,
+                                  size: 18),
+                              label: const Text('View Whole Month'),
+                              selected: _wholeMonth,
+                              onSelected: (selected) {
+                                setState(() => _wholeMonth = selected);
+                                reload();
+                              },
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (_wholeMonth) ...[
+                    const SizedBox(height: 12),
+                    _MonthSubtotal(month: monthly),
+                  ],
+                  const SizedBox(height: 16),
+                  if (rows.isEmpty)
+                    EmptyState(
+                        icon: Icons.egg_outlined,
+                        text: _wholeMonth
+                            ? 'No egg collection records for ${DateFormat('MMMM yyyy').format(_selectedDate)}.'
+                            : 'No egg collection recorded on ${DateFormat('dd MMM yyyy').format(_selectedDate)}. Click "+ Add entry" to log collection.')
+                  else
+                    for (final e in rows)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: AppCard(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      DateFormat('dd MMM yyyy').format(
+                                          DateTime.parse(
+                                              '${e['collection_date']}')),
+                                      style: t.textTheme.titleMedium?.copyWith(
+                                          fontWeight: FontWeight.w700),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Edit',
+                                    icon: const Icon(Icons.edit_outlined,
+                                        size: 20),
+                                    onPressed: () => _form(
+                                      context,
+                                      batches,
+                                      configuredEggsPerTray,
+                                      e: e,
+                                      reload: reload,
+                                    ),
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Delete',
+                                    icon: Icon(Icons.delete_outline,
+                                        size: 20, color: t.colorScheme.error),
+                                    onPressed: () async {
+                                      if (!await confirmDelete(
+                                          context, 'this egg record')) {
+                                        return;
+                                      }
+                                      try {
+                                        await ApiClient.instance
+                                            .delete('/eggs/${e['id']}');
+                                        if (context.mounted) {
+                                          toast(context,
+                                              'Egg record deleted successfully');
+                                        }
+                                      } catch (err) {
+                                        if (context.mounted) {
+                                          toast(context, '$err', error: true);
+                                        }
+                                      }
+                                    },
+                                  ),
+                                ],
+                              ),
+                              Text(
+                                '${qty(e['trays_count'])} trays + ${qty(e['loose_eggs'])} loose',
+                                style: t.textTheme.bodyMedium,
+                              ),
+                              const SizedBox(height: 12),
+                              Wrap(
+                                spacing: 10,
+                                runSpacing: 8,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  _EggMetric(
+                                      label: 'Total collected',
+                                      value: qty(e['total_eggs'])),
+                                  _EggMetric(
+                                    label: 'Damaged',
+                                    value: qty(e['damaged_eggs']),
+                                    damaged: true,
+                                  ),
+                                  _EggMetric(
+                                    label: 'Net saleable',
+                                    value: qty(e['net_eggs']),
+                                    prominent: true,
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  if (hasMore)
+                    Center(
+                      child: TextButton.icon(
+                        onPressed: loadingMore
+                            ? null
+                            : () async {
+                                setLocalState(() => loadingMore = true);
+                                try {
+                                  final response = Map<String, dynamic>.from(
+                                    await ApiClient.instance
+                                        .get('/eggs', query: {
+                                      ...dailyQuery,
+                                      'page': '${nextPage + 1}',
+                                      'limit': '20',
+                                    }) as Map,
+                                  );
+                                  final nextRows =
+                                      List<Map<String, dynamic>>.from(
+                                          response['data'] as List);
+                                  setLocalState(() {
+                                    rows.addAll(nextRows);
+                                    nextPage++;
+                                    hasMore = (response['pagination']
+                                            as Map)['hasMore'] ==
+                                        true;
+                                    loadingMore = false;
+                                  });
+                                } catch (error) {
+                                  setLocalState(() => loadingMore = false);
+                                  if (context.mounted) {
+                                    toast(context, '$error', error: true);
+                                  }
+                                }
+                              },
+                        icon: loadingMore
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.expand_more),
+                        label: Text(loadingMore
+                            ? 'Loading...'
+                            : 'Load more collections'),
+                      ),
+                    ),
+                ]));
       },
     );
   }

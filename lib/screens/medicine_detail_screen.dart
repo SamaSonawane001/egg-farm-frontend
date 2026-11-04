@@ -111,6 +111,8 @@ class _MedicineDetailScreenState extends State<MedicineDetailScreen> {
           controller: billUpload,
           moduleName: 'medicines',
         ),
+        onSaveAttempt: billUpload.clearError,
+        isSubmitErrorHandled: (_) => billUpload.error != null,
         onSubmit: (values) async {
           final quantity = double.parse(values['quantity']!);
           final rate = double.parse(values['rate_per_unit']!);

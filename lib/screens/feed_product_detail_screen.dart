@@ -21,7 +21,12 @@ class _FeedProductDetailScreenState extends State<FeedProductDetailScreen> {
 
   Future<Map<String, dynamic>> _load() async {
     final results = await Future.wait([
-      _api.get('/feed/products/${widget.productId}', query: {'month': _month}),
+      _api.get('/feed/products/${widget.productId}', query: {
+        'month': _month,
+        'purchase_page': '1',
+        'usage_page': '1',
+        'limit': '20',
+      }),
       _api.get('/feed/stock'),
       _api.get('/flock/batches'),
     ]);
@@ -169,6 +174,8 @@ class _FeedProductDetailScreenState extends State<FeedProductDetailScreen> {
               .toList();
           var purchasesHaveMore = product['purchases_has_more'] == true;
           var usageHasMore = product['usage_has_more'] == true;
+          var purchasePage = 1;
+          var usagePage = 1;
           var loadingMore = false;
           final kgPerBag =
               asD(stock['kg_per_bag']) > 0 ? asD(stock['kg_per_bag']) : 50.0;
@@ -293,10 +300,10 @@ class _FeedProductDetailScreenState extends State<FeedProductDetailScreen> {
                                           '/feed/products/${widget.productId}',
                                           query: {
                                             'month': _month,
-                                            'purchase_offset':
-                                                '${purchases.length}',
-                                            'usage_offset':
-                                                '${allUsage.length}',
+                                            'purchase_page':
+                                                '${purchasePage + 1}',
+                                            'usage_page': '$usagePage',
+                                            'limit': '20',
                                           },
                                         ) as Map,
                                       );
@@ -306,6 +313,7 @@ class _FeedProductDetailScreenState extends State<FeedProductDetailScreen> {
                                             page['purchases'] as List),
                                       );
                                       setLocalState(() {
+                                        purchasePage++;
                                         purchasesHaveMore =
                                             page['purchases_has_more'] == true;
                                         loadingMore = false;
@@ -411,20 +419,20 @@ class _FeedProductDetailScreenState extends State<FeedProductDetailScreen> {
                                           '/feed/products/${widget.productId}',
                                           query: {
                                             'month': _month,
-                                            'purchase_offset':
-                                                '${purchases.length}',
-                                            'usage_offset':
-                                                '${allUsage.length}',
+                                            'purchase_page': '$purchasePage',
+                                            'usage_page': '${usagePage + 1}',
+                                            'limit': '20',
                                           },
                                         ) as Map,
                                       );
                                       final page = response;
-                                      final usagePage =
+                                      final usageRows =
                                           List<Map<String, dynamic>>.from(
                                               page['usage'] as List);
-                                      allUsage.addAll(usagePage);
-                                      usage.addAll(usagePage);
+                                      allUsage.addAll(usageRows);
+                                      usage.addAll(usageRows);
                                       setLocalState(() {
+                                        usagePage++;
                                         usageHasMore =
                                             page['usage_has_more'] == true;
                                         loadingMore = false;

@@ -104,6 +104,8 @@ class _RawMaterialDetailScreenState extends State<RawMaterialDetailScreen> {
           controller: billUpload,
           moduleName: 'raw_materials',
         ),
+        onSaveAttempt: billUpload.clearError,
+        isSubmitErrorHandled: (_) => billUpload.error != null,
         onSubmit: (values) async {
           final quantity = double.parse(values['quantity']!);
           final rate = double.parse(values['rate_per_unit']!);

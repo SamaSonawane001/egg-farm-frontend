@@ -2,12 +2,12 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:http_parser/http_parser.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/api_client.dart';
 
-const int _maxBillSize = 5 * 1024 * 1024;
-const Set<String> _billExtensions = {'jpg', 'jpeg', 'png', 'webp', 'pdf'};
+const int _maxBillSize = 15 * 1024 * 1024;
 
 class BillUploadController extends ChangeNotifier {
   Uint8List? bytes;
@@ -17,16 +17,10 @@ class BillUploadController extends ChangeNotifier {
   bool uploading = false;
 
   void select(Uint8List data, String name) {
-    final extension = name.split('.').last.toLowerCase();
-    if (!_billExtensions.contains(extension)) {
+    if (data.length > _maxBillSize) {
       remove();
-      error = 'Choose a JPG, PNG, WebP or PDF file.';
-      notifyListeners();
-      return;
-    }
-    if (data.isEmpty || data.length > _maxBillSize) {
-      remove();
-      error = 'Bill files must be non-empty and no larger than 5 MB.';
+      error =
+          'File size is ${(data.length / (1024 * 1024)).toStringAsFixed(1)}MB. Maximum allowed is 15MB.';
       notifyListeners();
       return;
     }
@@ -50,6 +44,21 @@ class BillUploadController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void clearError() {
+    if (error == null) return;
+    error = null;
+    notifyListeners();
+  }
+
+  void rejectFileSize(int size) {
+    bytes = null;
+    fileName = null;
+    fileUrl = null;
+    error =
+        'File size is ${(size / (1024 * 1024)).toStringAsFixed(1)}MB. Maximum allowed is 15MB.';
+    notifyListeners();
+  }
+
   Future<String?> upload({required String moduleName}) async {
     if (bytes == null || fileName == null) return fileUrl;
     if (fileUrl != null) return fileUrl;
@@ -57,13 +66,31 @@ class BillUploadController extends ChangeNotifier {
     error = null;
     notifyListeners();
     try {
+      final name = fileName!.trim().isEmpty
+          ? 'receipt_${DateTime.now().millisecondsSinceEpoch}.bin'
+          : fileName!;
+      final extension =
+          name.contains('.') ? name.split('.').last.toLowerCase() : 'bin';
+      final contentType = switch (extension) {
+        'jpg' || 'jpeg' => MediaType('image', 'jpeg'),
+        'png' => MediaType('image', 'png'),
+        'pdf' => MediaType('application', 'pdf'),
+        'webp' ||
+        'heic' ||
+        'heif' ||
+        'bmp' ||
+        'gif' =>
+          MediaType('image', extension),
+        _ => MediaType('application', 'octet-stream'),
+      };
       final result = await ApiClient.instance.multipart(
         'POST',
         '/upload/bill',
         {'category': moduleName},
         fileBytes: bytes,
-        fileName: fileName,
+        fileName: name,
         fileField: 'file',
+        contentType: contentType,
       );
       if (result is! Map ||
           result['success'] != true ||
@@ -131,14 +158,13 @@ class BillUploadPicker extends StatelessWidget {
 
   Future<void> _pickFile() async {
     final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: _billExtensions.toList(),
+      type: FileType.any,
       withData: true,
     );
     if (result == null || result.files.isEmpty) return;
     final file = result.files.single;
     if (file.size > _maxBillSize) {
-      controller.setError('Bill files must be no larger than 5 MB.');
+      controller.rejectFileSize(file.size);
       return;
     }
     final bytes = file.bytes;
@@ -154,7 +180,10 @@ class BillUploadPicker extends StatelessWidget {
         builder: (context, _) {
           final bytes = controller.bytes;
           final name = controller.fileName;
-          final isPdf = name?.toLowerCase().endsWith('.pdf') ?? false;
+          final extension = name?.split('.').last.toLowerCase();
+          final isPdf = extension == 'pdf';
+          final isPreviewableImage =
+              const {'jpg', 'jpeg', 'png', 'webp'}.contains(extension);
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -179,7 +208,23 @@ class BillUploadPicker extends StatelessWidget {
                               child: Icon(Icons.picture_as_pdf_outlined,
                                   size: 36, color: Colors.red),
                             )
-                          : Image.memory(bytes, fit: BoxFit.cover),
+                          : isPreviewableImage
+                              ? Image.memory(
+                                  bytes,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) =>
+                                      const ColoredBox(
+                                    color: Color(0xFFF2F3F4),
+                                    child: Icon(
+                                        Icons.insert_drive_file_outlined,
+                                        size: 36),
+                                  ),
+                                )
+                              : const ColoredBox(
+                                  color: Color(0xFFF2F3F4),
+                                  child: Icon(Icons.insert_drive_file_outlined,
+                                      size: 36),
+                                ),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -218,7 +263,7 @@ class BillUploadPicker extends StatelessWidget {
                 ),
               if (bytes != null && controller.fileUrl == null)
                 Text(
-                  'The receipt uploads when you save this inward entry (max 5 MB).',
+                  'The receipt uploads when you save this inward entry (max 15 MB).',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
             ],
@@ -229,13 +274,18 @@ class BillUploadPicker extends StatelessWidget {
 
 Future<void> showBillPreview(BuildContext context, String? url) async {
   if (url == null || url.isEmpty) return;
-  final isPdf = url.toLowerCase().split('?').first.endsWith('.pdf');
-  if (isPdf) {
+  final uri = Uri.tryParse(url);
+  final extension = uri?.pathSegments.isNotEmpty == true
+      ? uri!.pathSegments.last.split('.').last.toLowerCase()
+      : '';
+  final isPreviewableImage =
+      const {'jpg', 'jpeg', 'png', 'webp'}.contains(extension);
+  if (!isPreviewableImage) {
     final opened =
         await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
     if (!opened && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open the bill PDF.')),
+        const SnackBar(content: Text('Could not open this bill file.')),
       );
     }
     return;

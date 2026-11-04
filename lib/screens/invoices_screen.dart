@@ -226,17 +226,23 @@ class InvoicesScreen extends StatelessWidget {
       load: () async {
         final results = await Future.wait([
           ApiClient.instance
-              .get('/invoices', query: {'limit': '20', 'offset': '0'}),
+              .get('/invoices', query: {'page': '1', 'limit': '20'}),
           ApiClient.instance.get('/eggs/stock')
         ]);
+        final invoiceResponse = Map<String, dynamic>.from(results[0] as Map);
         return {
-          'invoices': List<Map<String, dynamic>>.from(results[0] as List),
+          'invoices':
+              List<Map<String, dynamic>>.from(invoiceResponse['data'] as List),
+          'pagination':
+              Map<String, dynamic>.from(invoiceResponse['pagination'] as Map),
           'eggStock': Map<String, dynamic>.from(results[1] as Map),
         };
       },
       builder: (context, data, reload) {
         final list = data['invoices'] as List<Map<String, dynamic>>;
-        var hasMore = list.length == 20;
+        var page = 1;
+        var hasMore =
+            (data['pagination'] as Map<String, dynamic>)['hasMore'] == true;
         var loadingMore = false;
         final eggStock = data['eggStock'] as Map<String, dynamic>;
         final t = Theme.of(context);
@@ -335,16 +341,21 @@ class InvoicesScreen extends StatelessWidget {
                             : () async {
                                 setLocalState(() => loadingMore = true);
                                 try {
-                                  final next = List<Map<String, dynamic>>.from(
+                                  final response = Map<String, dynamic>.from(
                                     await ApiClient.instance
                                         .get('/invoices', query: {
+                                      'page': '${page + 1}',
                                       'limit': '20',
-                                      'offset': '${list.length}',
-                                    }) as List,
+                                    }) as Map,
                                   );
+                                  final next = List<Map<String, dynamic>>.from(
+                                      response['data'] as List);
                                   setLocalState(() {
                                     list.addAll(next);
-                                    hasMore = next.length == 20;
+                                    page++;
+                                    hasMore = (response['pagination']
+                                            as Map)['hasMore'] ==
+                                        true;
                                     loadingMore = false;
                                   });
                                 } catch (error) {

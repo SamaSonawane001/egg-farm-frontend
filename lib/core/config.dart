@@ -1,6 +1,6 @@
 const String kApiBase = String.fromEnvironment(
   'API_BASE',
-  defaultValue: 'https://egg-farm-backend.onrender.com/api',
+  defaultValue: 'http://localhost:4000/api',
 );
 final String kApiOrigin = Uri.parse(kApiBase).origin;
 const String kCurrencySymbol = '₹';

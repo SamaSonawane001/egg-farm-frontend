@@ -4,34 +4,39 @@ import 'package:egg_farm/widgets/bill_upload_picker.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('accepts supported receipt extensions within the upload limit', () {
+  test('accepts any receipt extension within the upload limit', () {
     final controller = BillUploadController();
 
-    controller.select(Uint8List.fromList([1, 2, 3]), 'receipt.webp');
+    controller.select(Uint8List.fromList([1, 2, 3]), 'shared image.docx');
 
-    expect(controller.fileName, 'receipt.webp');
+    expect(controller.fileName, 'shared image.docx');
     expect(controller.bytes, isNotNull);
     expect(controller.error, isNull);
     controller.dispose();
   });
 
-  test('rejects unsupported receipt file types', () {
+  test('clears an upload error when a new receipt is selected or removed', () {
     final controller = BillUploadController();
 
+    controller.setError('Upload failed');
     controller.select(Uint8List.fromList([1, 2, 3]), 'receipt.gif');
+    expect(controller.error, isNull);
 
-    expect(controller.bytes, isNull);
-    expect(controller.error, contains('JPG, PNG, WebP or PDF'));
+    controller.setError('Upload failed');
+    controller.remove();
+    expect(controller.error, isNull);
     controller.dispose();
   });
 
-  test('rejects receipt files larger than five megabytes', () {
+  test('rejects receipt files larger than fifteen megabytes with exact size',
+      () {
     final controller = BillUploadController();
 
-    controller.select(Uint8List(5 * 1024 * 1024 + 1), 'receipt.pdf');
+    controller.select(Uint8List(15 * 1024 * 1024 + 1), 'receipt.pdf');
 
     expect(controller.bytes, isNull);
-    expect(controller.error, contains('no larger than 5 MB'));
+    expect(controller.error, contains('Maximum allowed is 15MB'));
+    expect(controller.error, contains('15.0MB'));
     controller.dispose();
   });
 }

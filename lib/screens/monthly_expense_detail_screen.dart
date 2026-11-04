@@ -56,16 +56,21 @@ class _MonthlyExpenseDetailScreenState
     super.dispose();
   }
 
-  Future<Map<String, dynamic>> _load() async =>
-      Map<String, dynamic>.from(await ApiClient.instance.get(
-        '/expenses/monthly-breakdown',
-        query: {
-          'month': '$_month',
-          'year': '$_year',
-          'limit': '20',
-          'offset': '0',
-        },
-      ));
+  Future<Map<String, dynamic>> _load() async {
+    final response = Map<String, dynamic>.from(await ApiClient.instance.get(
+      '/expenses/monthly-breakdown',
+      query: {
+        'month': '$_month',
+        'year': '$_year',
+        'page': '1',
+        'limit': '20',
+      },
+    ) as Map);
+    return {
+      ...Map<String, dynamic>.from(response['data'] as Map),
+      'pagination': response['pagination'],
+    };
+  }
 
   void _selectMonth(String value) {
     final parts = value.split('-');
@@ -84,7 +89,9 @@ class _MonthlyExpenseDetailScreenState
               List<Map<String, dynamic>>.from(data['categories'] ?? const []);
           final transactions = List<Map<String, dynamic>>.from(
               data['itemized_transactions'] ?? const []);
-          var hasMore = data['has_more'] == true;
+          var page = 1;
+          var hasMore =
+              (data['pagination'] as Map<String, dynamic>)['hasMore'] == true;
           var loadingMore = false;
           final needle = _searchTerm.trim().toLowerCase();
           final filtered = transactions.where((transaction) {
@@ -263,17 +270,20 @@ class _MonthlyExpenseDetailScreenState
                                 : () async {
                                     setLocalState(() => loadingMore = true);
                                     try {
-                                      final next = Map<String, dynamic>.from(
+                                      final response =
+                                          Map<String, dynamic>.from(
                                         await ApiClient.instance.get(
                                           '/expenses/monthly-breakdown',
                                           query: {
                                             'month': '$_month',
                                             'year': '$_year',
+                                            'page': '${page + 1}',
                                             'limit': '20',
-                                            'offset': '${transactions.length}',
                                           },
                                         ) as Map,
                                       );
+                                      final next = Map<String, dynamic>.from(
+                                          response['data'] as Map);
                                       final nextTransactions =
                                           List<Map<String, dynamic>>.from(
                                               next['itemized_transactions']
@@ -292,7 +302,10 @@ class _MonthlyExpenseDetailScreenState
                                         },
                                       ));
                                       setLocalState(() {
-                                        hasMore = next['has_more'] == true;
+                                        page++;
+                                        hasMore = (response['pagination']
+                                                as Map)['hasMore'] ==
+                                            true;
                                         loadingMore = false;
                                       });
                                     } catch (error) {
