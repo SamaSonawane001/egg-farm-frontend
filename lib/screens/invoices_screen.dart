@@ -10,6 +10,7 @@ import '../core/auth_state.dart';
 import '../core/config.dart';
 import '../core/invoice_pdf_file.dart';
 import '../core/theme.dart';
+import 'customer_ledger_screen.dart';
 import '../widgets/common.dart';
 
 const kInvoiceTypes = {
@@ -22,8 +23,7 @@ const _whatsAppChannel = MethodChannel('egg_farm/invoice_share');
 double _roundCurrency(double value) =>
     ((value + 1e-10) * 100).roundToDouble() / 100;
 
-String pdfUrl(Map<String, dynamic> inv) =>
-    '$kApiBase/public/invoices/${inv['share_token']}/pdf';
+String pdfUrl(Map<String, dynamic> inv) => publicInvoicePdfUrl('${inv['id']}');
 
 Future<void> openPdf(BuildContext c, Map<String, dynamic> inv) async {
   if (!await launchUrl(Uri.parse(pdfUrl(inv)),
@@ -50,19 +50,16 @@ String? _whatsAppPhone(dynamic value) {
 }
 
 String _invoiceShareMessage(Map<String, dynamic> inv, String farmName) {
-  final items = List<Map<String, dynamic>>.from(inv['items'] ?? const []);
-  final itemLines = items
-      .map((item) => _whatsAppLine(item, inv['invoice_type'] == 'egg_sale'))
-      .join('\n');
-  final message = 'Hello ${inv['customer_name']},\n'
-      'Invoice ${inv['invoice_no']} from $farmName\n'
-      'Date: ${fmtDate(inv['invoice_date'])}\n'
-      '\n$itemLines\n'
-      'Total: ${money(inv['grand_total'])}';
-  return message.replaceAll(
-    RegExp(r'https?://\S+', caseSensitive: false),
-    '',
-  );
+  final farm = farmName.trim().isEmpty ? 'Egg Invoice' : farmName.trim();
+  final rawCustomer = '${inv['customer_name'] ?? ''}'.trim();
+  final customer = rawCustomer.isEmpty ? 'Walk-in Customer' : rawCustomer;
+  final status = inv['payment_status'] == 'paid' ? 'Paid' : 'Unpaid';
+  return '*$farm*\n'
+      'Customer: *$customer*\n'
+      'Total Amount: *${money(inv['grand_total'])}*\n'
+      'Status: *$status*\n\n'
+      'View / Download Invoice PDF:\n'
+      '${pdfUrl(inv)}';
 }
 
 Future<void> sendWhatsApp(
@@ -80,10 +77,9 @@ Future<void> sendWhatsApp(
   if (kIsWeb ||
       (defaultTargetPlatform != TargetPlatform.android &&
           defaultTargetPlatform != TargetPlatform.iOS)) {
-    final webMessage = '$message\n\nView/Download Invoice: ${pdfUrl(inv)}';
     final whatsappUri = Uri.https('api.whatsapp.com', '/send', {
       'phone': phone,
-      'text': webMessage,
+      'text': message,
     });
     try {
       if (!await launchUrl(
@@ -115,8 +111,8 @@ Future<void> sendWhatsApp(
     }
     pdfFile = await createInvoicePdfFile(
       response.bodyBytes,
-      '${inv['id']}',
-      fileNamePrefix: 'invoice_',
+      '${farmName.trim().isEmpty ? 'Egg_Invoice' : farmName}_${inv['customer_name'] ?? 'Customer'}',
+      fileNamePrefix: '',
     );
   } catch (error) {
     debugPrint('Could not prepare invoice PDF for WhatsApp: $error');
@@ -147,7 +143,8 @@ Future<void> sendWhatsApp(
     await Share.shareXFiles(
       [pdfFile],
       text: message,
-      subject: 'Invoice ${inv['invoice_no']}',
+      subject:
+          '${farmName.trim().isEmpty ? 'Egg Invoice' : farmName} — Invoice',
     );
   } catch (error) {
     debugPrint('Invoice PDF fallback share failed: $error');
@@ -161,20 +158,58 @@ Future<void> sendWhatsApp(
   }
 }
 
-String _whatsAppLine(Map<String, dynamic> item, bool isEggSale) {
-  final unit = '${item['egg_unit'] ?? ''}';
-  if (!isEggSale) {
-    return '${item['description']}: ${qty(item['quantity'])} @ ${money(item['unit_price'])} = ${money(item['amount'])}';
-  }
-  final quantityDetails = unit == 'tray' || unit == 'crate'
-      ? '${qty(item['quantity'])} ${unit == 'crate' ? 'Crates' : 'Trays'} '
-          '(${qty(item['egg_quantity'])} eggs)'
-      : '${qty(item['egg_quantity'] ?? item['quantity'])} eggs';
-  return '$quantityDetails @ ${money(item['unit_price'])}/egg = ${money(item['amount'])}';
+class InvoicesScreen extends StatefulWidget {
+  const InvoicesScreen({super.key});
+
+  @override
+  State<InvoicesScreen> createState() => _InvoicesScreenState();
 }
 
-class InvoicesScreen extends StatelessWidget {
-  const InvoicesScreen({super.key});
+class _InvoicesScreenState extends State<InvoicesScreen> {
+  static const _pageSize = 10;
+  final ScrollController _scrollController = ScrollController();
+  int _page = 1;
+  int _section = 0;
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _changePage(int page) {
+    setState(() => _page = page);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  Future<void> _togglePaymentStatus(
+    BuildContext context,
+    Map<String, dynamic> invoice,
+    VoidCallback reload,
+  ) async {
+    final wasPaid = invoice['payment_status'] == 'paid';
+    try {
+      await ApiClient.instance.patch(
+        '/invoices/${invoice['id']}/payment-status',
+        {'payment_status': wasPaid ? 'unpaid' : 'paid'},
+      );
+      if (context.mounted) {
+        reload();
+        toast(
+            context, wasPaid ? 'Invoice marked unpaid' : 'Invoice marked paid');
+      }
+    } catch (error) {
+      if (context.mounted) toast(context, '$error', error: true);
+    }
+  }
 
   Future<void> _create(
       BuildContext context, VoidCallback reload, double availableEggs) async {
@@ -192,7 +227,9 @@ class InvoicesScreen extends StatelessWidget {
     showDialog(
       context: context,
       builder: (c) => AlertDialog(
-        title: Text('${created['invoice_no']} created'),
+        title: Text(
+          '${auth.farmName.trim().isEmpty ? 'Egg Invoice' : auth.farmName.trim()} — Invoice Created',
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -223,11 +260,15 @@ class InvoicesScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthState>();
     return DataLoader<Map<String, dynamic>>(
+      key: ValueKey('invoices-page-$_page'),
       load: () async {
         final results = await Future.wait([
-          ApiClient.instance
-              .get('/invoices', query: {'page': '1', 'limit': '20'}),
-          ApiClient.instance.get('/eggs/stock')
+          ApiClient.instance.get('/invoices', query: {
+            'page': '$_page',
+            'limit': '$_pageSize',
+          }),
+          ApiClient.instance.get('/eggs/stock'),
+          ApiClient.instance.get('/invoices/payment-summary'),
         ]);
         final invoiceResponse = Map<String, dynamic>.from(results[0] as Map);
         return {
@@ -236,148 +277,233 @@ class InvoicesScreen extends StatelessWidget {
           'pagination':
               Map<String, dynamic>.from(invoiceResponse['pagination'] as Map),
           'eggStock': Map<String, dynamic>.from(results[1] as Map),
+          'paymentSummary': Map<String, dynamic>.from(results[2] as Map),
         };
       },
       builder: (context, data, reload) {
         final list = data['invoices'] as List<Map<String, dynamic>>;
-        var page = 1;
-        var hasMore =
-            (data['pagination'] as Map<String, dynamic>)['hasMore'] == true;
-        var loadingMore = false;
+        final pagination = data['pagination'] as Map<String, dynamic>;
+        final total = asI(pagination['total']);
+        final totalPages =
+            asI(pagination['totalPages']).clamp(1, 999999).toInt();
+        if (_page > totalPages) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && _page > totalPages) _changePage(totalPages);
+          });
+        }
         final eggStock = data['eggStock'] as Map<String, dynamic>;
+        final paymentSummary = data['paymentSummary'] as Map<String, dynamic>;
         final t = Theme.of(context);
-        return StatefulBuilder(
-            builder: (context, setLocalState) =>
-                ListView(padding: const EdgeInsets.all(16), children: [
+        return Column(
+          children: [
+            Expanded(
+              child: ListView(
+                controller: _scrollController,
+                padding: const EdgeInsets.all(16),
+                children: [
                   PageHeader(
                     title: 'Invoicing & Billing',
-                    subtitle: 'Showing ${list.length} invoices',
+                    subtitle: _section == 0
+                        ? 'Manage customer invoices'
+                        : 'Customer balances and payment history',
                     actions: [
-                      Pill('Egg stock: ${qty(eggStock['available_eggs'])}',
-                          AppColors.primary),
-                      FilledButton.icon(
+                      if (_section == 0) ...[
+                        Pill('Egg stock: ${qty(eggStock['available_eggs'])}',
+                            AppColors.primary),
+                        Pill(
+                          'Pending / Unpaid: ${money(paymentSummary['pending_amount'])}',
+                          AppColors.yolk,
+                        ),
+                        FilledButton.icon(
                           onPressed: () => _create(
                               context, reload, asD(eggStock['available_eggs'])),
                           icon: const Icon(Icons.add),
-                          label: const Text('New invoice')),
+                          label: const Text('New invoice'),
+                        ),
+                      ],
                     ],
                   ),
-                  if (list.isEmpty)
-                    const EmptyState(
-                        icon: Icons.receipt_long_outlined,
-                        text: 'No invoices yet. Create your first one.'),
-                  for (final i in list)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: AppCard(
-                        child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(children: [
-                                Expanded(
+                  SegmentedButton<int>(
+                    segments: const [
+                      ButtonSegment(
+                        value: 0,
+                        label: Text('All Bills'),
+                        icon: Icon(Icons.receipt_long_outlined),
+                      ),
+                      ButtonSegment(
+                        value: 1,
+                        label: Text('Customers Khata'),
+                        icon: Icon(Icons.menu_book_outlined),
+                      ),
+                    ],
+                    selected: {_section},
+                    onSelectionChanged: (value) => setState(() {
+                      _section = value.first;
+                    }),
+                  ),
+                  const SizedBox(height: 14),
+                  if (_section == 1)
+                    const SizedBox(
+                      height: 600,
+                      child: CustomerKhataList(),
+                    )
+                  else ...[
+                    if (list.isEmpty)
+                      const EmptyState(
+                          icon: Icons.receipt_long_outlined,
+                          text: 'No invoices yet. Create your first one.'),
+                    for (final i in list)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: AppCard(
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(children: [
+                                  Expanded(
                                     child: Text(
-                                        '${i['invoice_no']}  •  ${i['customer_name']}',
-                                        style: t.textTheme.titleMedium)),
-                                Text(money(i['grand_total']),
-                                    style: t.textTheme.titleMedium?.copyWith(
-                                        color: t.colorScheme.primary)),
+                                      (i['customer_name'] == null ||
+                                              '${i['customer_name']}'
+                                                  .trim()
+                                                  .isEmpty
+                                          ? 'Walk-in Customer'
+                                          : '${i['customer_name']}'),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: t.textTheme.titleMedium,
+                                    ),
+                                  ),
+                                  Text(money(i['grand_total']),
+                                      style: t.textTheme.titleMedium?.copyWith(
+                                          color: t.colorScheme.primary)),
+                                ]),
+                                const SizedBox(height: 6),
+                                Row(children: [
+                                  Pill(
+                                      kInvoiceTypes[i['invoice_type']] ??
+                                          '${i['invoice_type']}',
+                                      AppColors.yolk),
+                                  const SizedBox(width: 8),
+                                  Pill(
+                                    i['payment_status'] == 'paid'
+                                        ? 'Paid'
+                                        : 'Unpaid (Pending)',
+                                    i['payment_status'] == 'paid'
+                                        ? AppColors.primary
+                                        : AppColors.yolk,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                      '${fmtDate(i['invoice_date'])}  •  ${i['items_count']} items',
+                                      style: t.textTheme.bodySmall
+                                          ?.copyWith(color: t.hintColor)),
+                                ]),
+                                const SizedBox(height: 8),
+                                Wrap(spacing: 8, runSpacing: 4, children: [
+                                  OutlinedButton.icon(
+                                      onPressed: () => openPdf(context, i),
+                                      icon: const Icon(Icons.picture_as_pdf,
+                                          size: 18),
+                                      label: const Text('PDF')),
+                                  FilledButton.icon(
+                                    style: FilledButton.styleFrom(
+                                        backgroundColor:
+                                            const Color(0xFF25D366),
+                                        foregroundColor: Colors.white),
+                                    onPressed: () =>
+                                        sendWhatsApp(context, i, auth.farmName),
+                                    icon: const Icon(Icons.send, size: 18),
+                                    label: const Text('Send via WhatsApp'),
+                                  ),
+                                  if (i['payment_status'] != 'paid')
+                                    OutlinedButton.icon(
+                                      onPressed: () => _togglePaymentStatus(
+                                          context, i, reload),
+                                      icon: const Icon(
+                                          Icons.check_circle_outline,
+                                          size: 18),
+                                      label: const Text('Mark Paid'),
+                                    )
+                                  else
+                                    TextButton.icon(
+                                      onPressed: () => _togglePaymentStatus(
+                                          context, i, reload),
+                                      icon: const Icon(Icons.undo_outlined,
+                                          size: 18),
+                                      label: const Text('Mark Unpaid'),
+                                    ),
+                                  IconButton(
+                                    icon: Icon(Icons.delete_outline,
+                                        color: t.colorScheme.error),
+                                    onPressed: () async {
+                                      if (!await confirmDelete(context,
+                                          'invoice ${i['invoice_no']}')) {
+                                        return;
+                                      }
+                                      try {
+                                        await ApiClient.instance
+                                            .delete('/invoices/${i['id']}');
+                                        if (context.mounted) {
+                                          toast(context,
+                                              'Invoice deleted successfully');
+                                          reload();
+                                        }
+                                      } catch (e) {
+                                        if (context.mounted) {
+                                          toast(context, '$e', error: true);
+                                        }
+                                      }
+                                    },
+                                  ),
+                                ]),
                               ]),
-                              const SizedBox(height: 6),
-                              Row(children: [
-                                Pill(
-                                    kInvoiceTypes[i['invoice_type']] ??
-                                        '${i['invoice_type']}',
-                                    AppColors.yolk),
-                                const SizedBox(width: 8),
-                                Text(
-                                    '${fmtDate(i['invoice_date'])}  •  ${i['items_count']} items',
-                                    style: t.textTheme.bodySmall
-                                        ?.copyWith(color: t.hintColor)),
-                              ]),
-                              const SizedBox(height: 8),
-                              Wrap(spacing: 8, runSpacing: 4, children: [
-                                OutlinedButton.icon(
-                                    onPressed: () => openPdf(context, i),
-                                    icon: const Icon(Icons.picture_as_pdf,
-                                        size: 18),
-                                    label: const Text('PDF')),
-                                FilledButton.icon(
-                                  style: FilledButton.styleFrom(
-                                      backgroundColor: const Color(0xFF25D366),
-                                      foregroundColor: Colors.white),
-                                  onPressed: () =>
-                                      sendWhatsApp(context, i, auth.farmName),
-                                  icon: const Icon(Icons.send, size: 18),
-                                  label: const Text('Send via WhatsApp'),
-                                ),
-                                IconButton(
-                                  icon: Icon(Icons.delete_outline,
-                                      color: t.colorScheme.error),
-                                  onPressed: () async {
-                                    if (!await confirmDelete(
-                                        context, 'invoice ${i['invoice_no']}'))
-                                      return;
-                                    try {
-                                      await ApiClient.instance
-                                          .delete('/invoices/${i['id']}');
-                                      if (context.mounted)
-                                        toast(context,
-                                            'Invoice deleted successfully');
-                                    } catch (e) {
-                                      if (context.mounted)
-                                        toast(context, '$e', error: true);
-                                    }
-                                  },
-                                ),
-                              ]),
-                            ]),
+                        ),
                       ),
-                    ),
-                  if (hasMore)
-                    Center(
-                      child: TextButton.icon(
-                        onPressed: loadingMore
-                            ? null
-                            : () async {
-                                setLocalState(() => loadingMore = true);
-                                try {
-                                  final response = Map<String, dynamic>.from(
-                                    await ApiClient.instance
-                                        .get('/invoices', query: {
-                                      'page': '${page + 1}',
-                                      'limit': '20',
-                                    }) as Map,
-                                  );
-                                  final next = List<Map<String, dynamic>>.from(
-                                      response['data'] as List);
-                                  setLocalState(() {
-                                    list.addAll(next);
-                                    page++;
-                                    hasMore = (response['pagination']
-                                            as Map)['hasMore'] ==
-                                        true;
-                                    loadingMore = false;
-                                  });
-                                } catch (error) {
-                                  setLocalState(() => loadingMore = false);
-                                  if (context.mounted) {
-                                    toast(context, '$error', error: true);
-                                  }
-                                }
-                              },
-                        icon: loadingMore
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.expand_more),
-                        label: Text(
-                            loadingMore ? 'Loading...' : 'Load more invoices'),
+                  ],
+                ],
+              ),
+            ),
+            if (_section == 0 && total > 0)
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        tooltip: 'Previous page',
+                        onPressed:
+                            _page > 1 ? () => _changePage(_page - 1) : null,
+                        icon: const Icon(Icons.chevron_left),
                       ),
-                    ),
-                ]));
+                      Container(
+                        constraints: const BoxConstraints(minWidth: 56),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text('$_page / $totalPages'),
+                      ),
+                      IconButton(
+                        tooltip: 'Next page',
+                        onPressed: _page < totalPages
+                            ? () => _changePage(_page + 1)
+                            : null,
+                        icon: const Icon(Icons.chevron_right),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        );
       },
     );
   }
@@ -412,6 +538,7 @@ class NewInvoicePage extends StatefulWidget {
 class _NewInvoicePageState extends State<NewInvoicePage> {
   final _form = GlobalKey<FormState>();
   String _type = 'egg_sale';
+  String _paymentStatus = 'unpaid';
   String _date = today();
   final _name = TextEditingController();
   final _mobile = TextEditingController();
@@ -451,6 +578,7 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
         'customer_name': _name.text.trim(),
         'customer_mobile': _mobile.text.trim(),
         'invoice_date': _date,
+        'payment_status': _paymentStatus,
         'tax_percent': asD(_tax.text),
         'notes': _notes.text.trim(),
         'items': [
@@ -506,7 +634,7 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: _type,
+                initialValue: _type,
                 decoration: dec(context, 'Invoice type'),
                 items: [
                   for (final e in kInvoiceTypes.entries)
@@ -539,6 +667,45 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
                   label: 'Invoice date',
                   value: _date,
                   onChanged: (v) => setState(() => _date = v)),
+              const SizedBox(height: 12),
+              Text('Payment status', style: t.textTheme.titleSmall),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _paymentStatus == 'unpaid'
+                            ? AppColors.yolk
+                            : t.colorScheme.surfaceContainerHighest,
+                        foregroundColor: _paymentStatus == 'unpaid'
+                            ? Colors.white
+                            : t.colorScheme.onSurface,
+                      ),
+                      onPressed: () =>
+                          setState(() => _paymentStatus = 'unpaid'),
+                      icon: const Icon(Icons.schedule_outlined),
+                      label: const Text('Unpaid'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _paymentStatus == 'paid'
+                            ? AppColors.primary
+                            : t.colorScheme.surfaceContainerHighest,
+                        foregroundColor: _paymentStatus == 'paid'
+                            ? Colors.white
+                            : t.colorScheme.onSurface,
+                      ),
+                      onPressed: () => setState(() => _paymentStatus = 'paid'),
+                      icon: const Icon(Icons.check_circle_outline),
+                      label: const Text('Paid'),
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 18),
               Text('Line items', style: t.textTheme.titleMedium),
               const SizedBox(height: 8),
@@ -574,7 +741,7 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
                       const SizedBox(height: 10),
                       if (_type == 'egg_sale') ...[
                         DropdownButtonFormField<String>(
-                          value: _items[idx].eggUnit,
+                          initialValue: _items[idx].eggUnit,
                           decoration: dec(context, 'Egg billing unit'),
                           items: const [
                             DropdownMenuItem(
@@ -605,8 +772,9 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
                               final basic = posNum(value);
                               if (basic != null) return basic;
                               if (_type == 'egg_sale' &&
-                                  asD(value) != asD(value).roundToDouble())
+                                  asD(value) != asD(value).roundToDouble()) {
                                 return 'Enter a whole number';
+                              }
                               return null;
                             },
                           ),
@@ -681,7 +849,7 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
                   decoration: dec(context, 'Notes (optional)')),
               const SizedBox(height: 16),
               AppCard(
-                color: t.colorScheme.primary.withOpacity(.08),
+                color: t.colorScheme.primary.withValues(alpha: .08),
                 child: Column(children: [
                   _sumRow(context, 'Subtotal', money(_subtotal)),
                   if (asD(_tax.text) > 0)

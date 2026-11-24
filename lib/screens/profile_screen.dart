@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -24,6 +25,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Uint8List? _avatar;
   String? _avatarName;
   bool _saving = false;
+  String? _assetBusy;
 
   @override
   void dispose() {
@@ -61,6 +63,134 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _avatar = b;
       _avatarName = x.name;
     });
+  }
+
+  Future<void> _pickFarmAsset(String asset) async {
+    final x = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1800,
+      maxHeight: 1800,
+    );
+    if (x == null || !mounted) return;
+    setState(() => _assetBusy = asset);
+    try {
+      await context
+          .read<AuthState>()
+          .uploadFarmAsset(asset, await x.readAsBytes(), x.name);
+      if (mounted) toast(context, 'Image uploaded');
+    } catch (e) {
+      if (mounted) toast(context, '$e', error: true);
+    } finally {
+      if (mounted) setState(() => _assetBusy = null);
+    }
+  }
+
+  Future<void> _removeFarmAsset(String asset) async {
+    setState(() => _assetBusy = asset);
+    try {
+      await context.read<AuthState>().removeFarmAsset(asset);
+      if (mounted) toast(context, 'Image removed');
+    } catch (e) {
+      if (mounted) toast(context, '$e', error: true);
+    } finally {
+      if (mounted) setState(() => _assetBusy = null);
+    }
+  }
+
+  Widget _farmAssetCard({
+    required String asset,
+    required String title,
+    required String subtitle,
+    required String? url,
+    required bool square,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    final busy = _assetBusy == asset;
+    final disabled = _assetBusy != null;
+    final hasImage = url != null && url.isNotEmpty;
+    final isDataUri = url?.startsWith('data:image/png;base64,') ?? false;
+    final preview = ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: square ? 82 : 92,
+        height: square ? 82 : 76,
+        color: cs.surfaceContainerHighest.withValues(alpha: .5),
+        alignment: Alignment.center,
+        child: hasImage
+            ? (isDataUri
+                ? Image.memory(
+                    base64Decode(
+                        url.substring('data:image/png;base64,'.length)),
+                    key: ValueKey(url),
+                    width: square ? 76 : 88,
+                    height: square ? 76 : 68,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => Icon(
+                      square ? Icons.qr_code_2 : Icons.draw_outlined,
+                      size: 34,
+                      color: cs.primary,
+                    ),
+                  )
+                : Image.network(
+                    url,
+                    key: ValueKey(url),
+                    width: square ? 76 : 88,
+                    height: square ? 76 : 68,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => Icon(
+                      square ? Icons.qr_code_2 : Icons.draw_outlined,
+                      size: 34,
+                      color: cs.primary,
+                    ),
+                  ))
+            : Icon(
+                square ? Icons.qr_code_2 : Icons.draw_outlined,
+                size: 34,
+                color: cs.primary.withValues(alpha: .7),
+              ),
+      ),
+    );
+    return AppCard(
+      child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        preview,
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 3),
+              Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+              const SizedBox(height: 8),
+              Wrap(spacing: 8, runSpacing: 4, children: [
+                OutlinedButton.icon(
+                  onPressed: disabled ? null : () => _pickFarmAsset(asset),
+                  icon: busy
+                      ? const SizedBox(
+                          width: 15,
+                          height: 15,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.upload_outlined, size: 17),
+                  label: Text(asset == 'signature'
+                      ? hasImage
+                          ? 'Change Signature'
+                          : 'Upload Signature'
+                      : hasImage
+                          ? 'Change Payment QR'
+                          : 'Upload Payment QR'),
+                ),
+                if (hasImage)
+                  TextButton(
+                    onPressed: disabled ? null : () => _removeFarmAsset(asset),
+                    child: const Text('Remove'),
+                  ),
+              ]),
+            ],
+          ),
+        ),
+      ]),
+    );
   }
 
   Future<void> _save() async {
@@ -156,7 +286,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Positioned.fill(
                       child: DecoratedBox(
                         decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(.4),
+                            color: Colors.black.withValues(alpha: .4),
                             shape: BoxShape.circle),
                         child: const Center(
                             child:
@@ -196,6 +326,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 maxLines: 3,
                 decoration: dec(context, 'Farm address (printed on invoices)')),
           ]),
+        ),
+        const SizedBox(height: 14),
+        _farmAssetCard(
+          asset: 'signature',
+          title: 'Authorized Signature',
+          subtitle: 'मालकाची सही / Signature',
+          url: auth.signatureUrl,
+          square: false,
+        ),
+        const SizedBox(height: 10),
+        _farmAssetCard(
+          asset: 'payment_qr',
+          title: 'Payment QR Code',
+          subtitle: 'PhonePe / Google Pay / Bank QR',
+          url: auth.paymentQrUrl,
+          square: true,
         ),
         const SizedBox(height: 14),
         AppCard(

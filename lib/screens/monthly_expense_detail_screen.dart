@@ -2,15 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../core/api_client.dart';
 import '../core/theme.dart';
-import '../widgets/bill_upload_picker.dart';
 import '../widgets/common.dart';
-
-const _expenseCategories = [
-  'Feed',
-  'Raw Materials',
-  'Medicines & Health',
-  'Birds / Chicks',
-];
 
 class MonthlyExpenseDetailScreen extends StatefulWidget {
   final int month;
@@ -118,7 +110,7 @@ class _MonthlyExpenseDetailScreenState
                       LayoutBuilder(
                         builder: (context, constraints) {
                           final monthPicker = DropdownButtonFormField<String>(
-                            value: selectedMonth,
+                            initialValue: selectedMonth,
                             isExpanded: true,
                             decoration: dec(context, 'Month'),
                             items: [
@@ -242,7 +234,12 @@ class _MonthlyExpenseDetailScreenState
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: Row(children: [
-                          for (final category in ['All', ..._expenseCategories])
+                          for (final category in [
+                            'All',
+                            ...categories
+                                .map((item) => '${item['category']}')
+                                .toSet()
+                          ])
                             Padding(
                               padding: const EdgeInsets.only(right: 8),
                               child: ChoiceChip(
@@ -409,7 +406,6 @@ class _ExpenseTransactionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final billUrl = transaction['bill_image_url'] as String?;
     final category = '${transaction['category']}';
     return Card(
       child: ListTile(
@@ -430,15 +426,6 @@ class _ExpenseTransactionTile extends StatelessWidget {
                   Text('Date: ${fmtDate(transaction['date'])}'),
                   Text('Vendor: ${transaction['vendor'] ?? 'Not recorded'}'),
                   Text('Amount: ${money(transaction['amount'])}'),
-                  if (billUrl != null && billUrl.isNotEmpty)
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton.icon(
-                        onPressed: () => showBillPreview(context, billUrl),
-                        icon: const Icon(Icons.receipt_long_outlined),
-                        label: const Text('View bill'),
-                      ),
-                    ),
                 ],
               ),
             ),

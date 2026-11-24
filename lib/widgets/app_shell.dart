@@ -19,6 +19,8 @@ const _items = [
       Icons.grain),
   _Nav('/medicines', 'Medicines', 'Medicine', Icons.medication_outlined,
       Icons.medication),
+  _Nav('/farm-expenses', 'Farm Expenses · फार्म खर्च', 'Expenses',
+      Icons.account_balance_wallet_outlined, Icons.account_balance_wallet),
   _Nav('/eggs', 'Egg Production', 'Eggs', Icons.egg_outlined, Icons.egg),
   _Nav('/invoices', 'Invoices & Billing', 'Bills', Icons.receipt_long_outlined,
       Icons.receipt_long),

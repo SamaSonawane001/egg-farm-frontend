@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'core/auth_state.dart';
 import 'screens/dashboard_screen.dart';
+import 'screens/customer_ledger_screen.dart';
 import 'screens/eggs_screen.dart';
 import 'screens/feed_inventory_screen.dart';
 import 'screens/feed_product_detail_screen.dart';
+import 'screens/farm_expenses_screen.dart';
 import 'screens/flock_screen.dart';
 import 'screens/invoices_screen.dart';
 import 'screens/login_screen.dart';
@@ -14,6 +16,7 @@ import 'screens/medicines_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/raw_material_detail_screen.dart';
 import 'screens/raw_materials_screen.dart';
+import 'screens/ready_feed_detail_screen.dart';
 import 'screens/signup_screen.dart';
 import 'widgets/app_shell.dart';
 
@@ -77,6 +80,9 @@ GoRouter buildRouter(AuthState auth) {
               path: '/medicines',
               pageBuilder: (_, __) => page(const MedicinesScreen())),
           GoRoute(
+              path: '/farm-expenses',
+              pageBuilder: (_, __) => page(const FarmExpensesScreen())),
+          GoRoute(
             path: '/medicines/:medicineId',
             pageBuilder: (_, state) => page(MedicineDetailScreen(
               medicineId: state.pathParameters['medicineId']!,
@@ -84,6 +90,9 @@ GoRouter buildRouter(AuthState auth) {
               unit: (state.extra as Map<String, String>?)?['unit'],
             )),
           ),
+          GoRoute(
+              path: '/feed/ready',
+              pageBuilder: (_, __) => page(const ReadyFeedDetailScreen())),
           GoRoute(
             path: '/feed/:productId',
             pageBuilder: (_, state) => page(FeedProductDetailScreen(
@@ -94,6 +103,12 @@ GoRouter buildRouter(AuthState auth) {
           GoRoute(
               path: '/invoices',
               pageBuilder: (_, __) => page(const InvoicesScreen())),
+          GoRoute(
+            path: '/customers/:customerId',
+            pageBuilder: (_, state) => page(CustomerLedgerScreen(
+              customerId: state.pathParameters['customerId']!,
+            )),
+          ),
           GoRoute(
               path: '/profile',
               pageBuilder: (_, __) => page(const ProfileScreen())),

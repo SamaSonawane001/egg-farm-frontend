@@ -10,16 +10,22 @@ class FieldSpec {
   final bool required;
   final bool clearZeroOnFocus;
   final bool normalizeLeadingZeros;
+  final bool readOnly;
   final List<MapEntry<String, String>> options; // value -> label (select)
   final String? hint;
+  final String Function(Map<String, String> values)? labelForValues;
+  final bool Function(Map<String, String> values)? visibleWhen;
   final String? Function(String? value, Map<String, String> values)? validator;
   const FieldSpec(this.key, this.label,
       {this.type = FieldType.text,
       this.required = true,
       this.clearZeroOnFocus = false,
       this.normalizeLeadingZeros = false,
+      this.readOnly = false,
       this.options = const [],
       this.hint,
+      this.labelForValues,
+      this.visibleWhen,
       this.validator});
 }
 
@@ -155,6 +161,7 @@ class _FormDialogState extends State<_FormDialog> {
   }
 
   Widget _field(FieldSpec f) {
+    final label = f.labelForValues?.call(_collect()) ?? f.label;
     String? req(String? s) =>
         (f.required && (s == null || s.trim().isEmpty)) ? 'Required' : null;
     switch (f.type) {
@@ -163,7 +170,7 @@ class _FormDialogState extends State<_FormDialog> {
           initialValue:
               f.options.any((o) => o.key == _v[f.key]) ? _v[f.key] : null,
           isExpanded: true,
-          decoration: dec(context, f.label),
+          decoration: dec(context, label),
           items: [
             for (final o in f.options)
               DropdownMenuItem(
@@ -178,8 +185,7 @@ class _FormDialogState extends State<_FormDialog> {
         return TextFormField(
           controller: _c[f.key],
           readOnly: true,
-          decoration:
-              dec(context, f.label, icon: Icons.calendar_today_outlined),
+          decoration: dec(context, label, icon: Icons.calendar_today_outlined),
           onTap: () async {
             final d = await showDatePicker(
               context: context,
@@ -202,8 +208,9 @@ class _FormDialogState extends State<_FormDialog> {
           focusNode: _focusNodes[f.key],
           keyboardType: TextInputType.numberWithOptions(
               decimal: f.type == FieldType.number),
-          decoration: dec(context, f.label,
+          decoration: dec(context, label,
               hint: f.hint ?? (f.type == FieldType.integer ? '0' : null)),
+          readOnly: f.readOnly,
           onChanged: (value) {
             if (f.type == FieldType.integer &&
                 f.normalizeLeadingZeros &&
@@ -236,7 +243,7 @@ class _FormDialogState extends State<_FormDialog> {
           controller: _c[f.key],
           minLines: 2,
           maxLines: 4,
-          decoration: dec(context, f.label, hint: f.hint),
+          decoration: dec(context, label, hint: f.hint),
           validator: req,
         );
       case FieldType.phone:
@@ -244,13 +251,13 @@ class _FormDialogState extends State<_FormDialog> {
           controller: _c[f.key],
           keyboardType: TextInputType.phone,
           decoration:
-              dec(context, f.label, hint: f.hint, icon: Icons.phone_outlined),
+              dec(context, label, hint: f.hint, icon: Icons.phone_outlined),
           validator: req,
         );
       case FieldType.text:
         return TextFormField(
           controller: _c[f.key],
-          decoration: dec(context, f.label, hint: f.hint),
+          decoration: dec(context, label, hint: f.hint),
           onChanged: (_) => setState(() {}),
           validator: req,
         );
@@ -270,7 +277,8 @@ class _FormDialogState extends State<_FormDialog> {
             key: _form,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               const SizedBox(height: 4),
-              for (final f in widget.fields)
+              for (final f in widget.fields.where(
+                  (field) => field.visibleWhen?.call(_collect()) ?? true))
                 Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: _field(f)),

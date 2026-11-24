@@ -3,7 +3,6 @@ import 'package:go_router/go_router.dart';
 
 import '../core/api_client.dart';
 import '../core/theme.dart';
-import '../widgets/bill_upload_picker.dart';
 import '../widgets/common.dart';
 import '../widgets/form_dialog.dart';
 
@@ -13,6 +12,31 @@ const _adminRoutes = [
   MapEntry('Spray', 'Spray'),
   MapEntry('Injection', 'Injection'),
 ];
+
+String _medicineUnitLabel(dynamic unit) => switch ('$unit') {
+      'L' => 'Litre',
+      'ml' => 'ml',
+      'kg' => 'kg',
+      'g' => 'g',
+      _ => '$unit',
+    };
+
+List<MapEntry<String, String>> _medicineInwardUnits(String unit) =>
+    unit == 'L' || unit == 'ml'
+        ? const [MapEntry('L', 'Litre (L)'), MapEntry('ml', 'Millilitre (ml)')]
+        : const [MapEntry('kg', 'Kilogram (kg)'), MapEntry('g', 'Gram (g)')];
+
+String _medicineQuantityLabel(Map<String, String> values, String unit) =>
+    'Quantity purchased (${values['unit'] ?? unit})';
+
+String _medicineRateLabel(Map<String, String> values, String unit) =>
+    'Rate per 1 ${_medicineUnitLabel(values['unit'] ?? unit)} (₹)';
+
+double _toMedicineUnit(double quantity, String fromUnit, String medicineUnit) {
+  if (fromUnit == medicineUnit) return quantity;
+  final factor = fromUnit == 'L' || fromUnit == 'kg' ? 1000 : 0.001;
+  return quantity * factor;
+}
 
 class MedicineDetailScreen extends StatefulWidget {
   final String medicineId;
@@ -59,99 +83,105 @@ class _MedicineDetailScreenState extends State<MedicineDetailScreen> {
     VoidCallback reload, {
     Map<String, dynamic>? purchase,
   }) async {
-    final billUpload = BillUploadController();
-    try {
-      final saved = await showFormDialog(
-        context,
-        title: purchase == null
-            ? 'Add Stock / औषध आवक · ${medicine['name']}'
-            : 'Edit Stock Batch · ${medicine['name']}',
-        initial: purchase == null
-            ? const {}
-            : {
-                ...purchase,
-                'quantity': purchase['quantity'],
-                'date': purchase['date'],
-                'rate_per_unit': asD(purchase['quantity']) == 0
-                    ? 0
-                    : asD(purchase['total_cost']) / asD(purchase['quantity']),
-              },
-        fields: [
-          const FieldSpec('date', 'Purchase date', type: FieldType.date),
-          FieldSpec(
-            'quantity',
-            'Quantity purchased (${medicine['unit']})',
-            type: FieldType.number,
-            validator: _positiveQuantityValidator,
-          ),
-          FieldSpec(
-            'rate_per_unit',
-            'Rate / price per ${medicine['unit']} (₹)',
-            type: FieldType.number,
-            validator: _rateValidator,
-          ),
-          const FieldSpec('batch_number', 'Batch number'),
-          const FieldSpec('expiry_date', 'Expiry date', type: FieldType.date),
-          const FieldSpec(
-            'vendor_name',
-            'Vendor / supplier',
-            required: false,
-          ),
-          const FieldSpec('bill_number', 'Bill number', required: false),
-          const FieldSpec(
-            'remarks',
-            'Notes',
-            type: FieldType.multiline,
-            required: false,
-          ),
-        ],
-        preview: (values) =>
-            'Total amount: ${money(asD(values['quantity']) * asD(values['rate_per_unit']))}',
-        extraContentBuilder: (_) => BillUploadPicker(
-          controller: billUpload,
-          moduleName: 'medicines',
+    final unit = '${medicine['unit']}';
+    final saved = await showFormDialog(
+      context,
+      title: purchase == null
+          ? 'Add Stock / औषध आवक · ${medicine['name']}'
+          : 'Edit Stock Batch · ${medicine['name']}',
+      initial: purchase == null
+          ? {'unit': unit}
+          : {
+              ...purchase,
+              'quantity': purchase['entered_quantity'] ?? purchase['quantity'],
+              'unit': purchase['entered_unit'] ?? unit,
+              'date': purchase['date'],
+              'rate_per_unit': purchase['rate_per_unit'] ??
+                  (asD(purchase['entered_quantity'] ?? purchase['quantity']) ==
+                          0
+                      ? 0
+                      : asD(purchase['total_cost']) /
+                          asD(purchase['entered_quantity'] ??
+                              purchase['quantity'])),
+            },
+      fields: [
+        const FieldSpec('date', 'Purchase date', type: FieldType.date),
+        FieldSpec(
+          'unit',
+          'Unit',
+          type: FieldType.select,
+          options: _medicineInwardUnits(unit),
         ),
-        onSaveAttempt: billUpload.clearError,
-        isSubmitErrorHandled: (_) => billUpload.error != null,
-        onSubmit: (values) async {
-          final quantity = double.parse(values['quantity']!);
-          final rate = double.parse(values['rate_per_unit']!);
-          final billImageUrl = await billUpload.upload(moduleName: 'medicines');
-          final body = {
-            'unit': medicine['unit'],
-            'quantity': quantity,
-            'batch_number': values['batch_number'],
-            'expiry_date': values['expiry_date'],
-            'date': values['date'],
-            'total_cost': double.parse((quantity * rate).toStringAsFixed(2)),
-            'bill_number': values['bill_number'],
-            'vendor_name': values['vendor_name'],
-            'bill_image_url': billImageUrl ?? purchase?['bill_image_url'],
-            'remarks': values['remarks'],
-          };
-          if (purchase == null) {
-            await ApiClient.instance.post(
-              '/medicines/${widget.medicineId}/stock',
-              body,
-            );
-          } else {
-            await ApiClient.instance.put(
-              '/medicines/${widget.medicineId}/stock/${purchase['id']}',
-              body,
-            );
-          }
-        },
-      );
-      if (saved && mounted) {
-        reload();
-        toast(
-            context,
-            purchase == null
-                ? 'Medicine stock received'
-                : 'Medicine batch updated');
-      }
-    } finally {
-      billUpload.dispose();
+        FieldSpec(
+          'quantity',
+          _medicineQuantityLabel(const {}, unit),
+          type: FieldType.number,
+          validator: _positiveQuantityValidator,
+          labelForValues: (values) => _medicineQuantityLabel(values, unit),
+        ),
+        FieldSpec(
+          'rate_per_unit',
+          _medicineRateLabel(const {}, unit),
+          type: FieldType.number,
+          validator: _rateValidator,
+          labelForValues: (values) => _medicineRateLabel(values, unit),
+        ),
+        const FieldSpec('batch_number', 'Batch number'),
+        const FieldSpec('expiry_date', 'Expiry date', type: FieldType.date),
+        const FieldSpec(
+          'vendor_name',
+          'Vendor / supplier',
+          required: false,
+        ),
+        const FieldSpec('bill_number', 'Bill number', required: false),
+        const FieldSpec(
+          'remarks',
+          'Notes',
+          type: FieldType.multiline,
+          required: false,
+        ),
+      ],
+      preview: (values) {
+        final quantity = asD(values['quantity']);
+        final enteredUnit = values['unit'] ?? unit;
+        final stockQuantity = _toMedicineUnit(quantity, enteredUnit, unit);
+        return 'Total amount: ${money(quantity * asD(values['rate_per_unit']))} · Stock added: ${qty(stockQuantity)} $unit';
+      },
+      onSubmit: (values) async {
+        final quantity = double.parse(values['quantity']!);
+        final rate = double.parse(values['rate_per_unit']!);
+        final body = {
+          'unit': values['unit'],
+          'quantity': quantity,
+          'rate_per_unit': rate,
+          'batch_number': values['batch_number'],
+          'expiry_date': values['expiry_date'],
+          'date': values['date'],
+          'total_cost': double.parse((quantity * rate).toStringAsFixed(2)),
+          'bill_number': values['bill_number'],
+          'vendor_name': values['vendor_name'],
+          'remarks': values['remarks'],
+        };
+        if (purchase == null) {
+          await ApiClient.instance.post(
+            '/medicines/${widget.medicineId}/stock',
+            body,
+          );
+        } else {
+          await ApiClient.instance.put(
+            '/medicines/${widget.medicineId}/stock/${purchase['id']}',
+            body,
+          );
+        }
+      },
+    );
+    if (saved && mounted) {
+      reload();
+      toast(
+          context,
+          purchase == null
+              ? 'Medicine stock received'
+              : 'Medicine batch updated');
     }
   }
 
@@ -463,8 +493,13 @@ class _PurchaseTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final quantity = asD(purchase['quantity']);
+    final enteredQuantity =
+        asD(purchase['entered_quantity'] ?? purchase['quantity']);
+    final enteredUnit = '${purchase['entered_unit'] ?? unit}';
     final totalCost = asD(purchase['total_cost']);
-    final rate = quantity <= 0 ? 0 : totalCost / quantity;
+    final rate = purchase['rate_per_unit'] == null
+        ? (quantity <= 0 ? 0 : totalCost / quantity)
+        : asD(purchase['rate_per_unit']);
     final expiry = purchase['expiry_date'];
     final expiryDate = DateTime.tryParse('$expiry');
     final nearExpiry = expiryDate != null &&
@@ -484,7 +519,7 @@ class _PurchaseTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '${qty(quantity)} $unit received',
+                '${qty(enteredQuantity)} $enteredUnit received',
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               Text(
@@ -492,7 +527,7 @@ class _PurchaseTile extends StatelessWidget {
                   fmtDate(purchase['date']),
                   'Batch ${purchase['batch_number']}',
                   'Expiry ${fmtDate(expiry)}',
-                  '${money(rate)} per $unit',
+                  '${money(rate)} per $enteredUnit',
                   if (purchase['vendor_name'] != null &&
                       '${purchase['vendor_name']}'.isNotEmpty)
                     '${purchase['vendor_name']}',
@@ -510,13 +545,6 @@ class _PurchaseTile extends StatelessWidget {
             ],
           ),
         ),
-        if (purchase['bill_image_url'] != null)
-          IconButton(
-            tooltip: 'View bill',
-            onPressed: () =>
-                showBillPreview(context, '${purchase['bill_image_url']}'),
-            icon: const Icon(Icons.receipt_long_outlined),
-          ),
         IconButton(
           tooltip: 'Edit batch',
           onPressed: onEdit,

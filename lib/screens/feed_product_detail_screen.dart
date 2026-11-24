@@ -5,6 +5,12 @@ import '../core/theme.dart';
 import '../widgets/common.dart';
 import '../widgets/form_dialog.dart';
 
+const _purchaseUnits = [
+  MapEntry('kg', 'Kilogram (kg)'),
+  MapEntry('quintal', 'Quintal'),
+  MapEntry('bags', 'Bags'),
+];
+
 class FeedProductDetailScreen extends StatefulWidget {
   final String productId;
   const FeedProductDetailScreen({super.key, required this.productId});
@@ -37,27 +43,71 @@ class _FeedProductDetailScreenState extends State<FeedProductDetailScreen> {
     };
   }
 
-  Future<void> _purchaseForm(Map<String, dynamic> product,
-      {Map<String, dynamic>? purchase}) async {
+  Future<void> _purchaseForm(
+    Map<String, dynamic> product, {
+    required double kgPerBag,
+    Map<String, dynamic>? purchase,
+  }) async {
+    final oldUnit = '${purchase?['entered_unit'] ?? 'bags'}';
     final saved = await showFormDialog(
       context,
       title: purchase == null
           ? 'Add delivery • ${product['name']}'
           : 'Edit delivery',
-      initial: purchase ?? {},
-      fields: const [
+      initial: {
+        if (purchase != null) ...purchase,
+        'quantity': purchase?['entered_quantity'] ?? purchase?['bags'],
+        'unit': oldUnit,
+        'rate_per_unit':
+            purchase?['rate_per_unit'] ?? purchase?['cost_per_bag'],
+        'kg_per_bag': purchase?['kg_per_bag'] ?? kgPerBag,
+      },
+      fields: [
         FieldSpec('delivery_date', 'Delivery date', type: FieldType.date),
-        FieldSpec('bags', 'Bags received', type: FieldType.number),
-        FieldSpec('cost_per_bag', 'Rate per bag', type: FieldType.number),
+        FieldSpec(
+          'quantity',
+          'Quantity received',
+          type: FieldType.number,
+          validator: _positiveQuantityValidator,
+        ),
+        const FieldSpec(
+          'unit',
+          'Unit',
+          type: FieldType.select,
+          options: _purchaseUnits,
+        ),
+        FieldSpec(
+          'kg_per_bag',
+          'Bag weight in kg',
+          type: FieldType.number,
+          readOnly: true,
+          visibleWhen: (values) => values['unit'] == 'bags',
+        ),
+        FieldSpec(
+          'rate_per_unit',
+          'Rate per 1 kg (₹)',
+          type: FieldType.number,
+          validator: _rateValidator,
+          labelForValues: _rateLabel,
+        ),
       ],
-      preview: (values) =>
-          'Total cost: ${money(asD(values['bags']) * asD(values['cost_per_bag']))}',
+      preview: (values) {
+        final quantity = asD(values['quantity']);
+        final unit = values['unit'] ?? 'kg';
+        final quantityKg = unit == 'bags'
+            ? quantity * kgPerBag
+            : unit == 'quintal'
+                ? quantity * 100
+                : quantity;
+        return 'Total cost: ${money(quantity * asD(values['rate_per_unit']))} · Stock added: ${qty(quantityKg / kgPerBag)} bags (${qty(quantityKg)} kg)';
+      },
       onSubmit: (values) async {
         final body = {
           'feed_product_id': widget.productId,
           'delivery_date': values['delivery_date'],
-          'bags': double.parse(values['bags']!),
-          'cost_per_bag': double.parse(values['cost_per_bag']!),
+          'quantity': double.parse(values['quantity']!),
+          'unit': values['unit'],
+          'rate_per_unit': double.parse(values['rate_per_unit']!),
         };
         if (purchase == null) {
           await _api.post('/feed/purchases', body);
@@ -66,9 +116,26 @@ class _FeedProductDetailScreenState extends State<FeedProductDetailScreen> {
         }
       },
     );
-    if (saved && mounted)
+    if (saved && mounted) {
       toast(context, purchase == null ? 'Delivery added' : 'Delivery updated');
+    }
   }
+
+  static String? _positiveQuantityValidator(
+    String? value,
+    Map<String, String> _,
+  ) =>
+      decimalValueError(value, maxDecimalPlaces: 3, mustBePositive: true);
+
+  static String? _rateValidator(String? value, Map<String, String> _) =>
+      decimalValueError(value, maxDecimalPlaces: 3);
+
+  static String _rateLabel(Map<String, String> values) =>
+      switch (values['unit']) {
+        'quintal' => 'Rate per 1 Quintal (₹)',
+        'bags' => 'Rate per 1 Bag (₹)',
+        _ => 'Rate per 1 kg (₹)',
+      };
 
   Future<void> _usageForm(
     Map<String, dynamic> product,
@@ -128,9 +195,10 @@ class _FeedProductDetailScreenState extends State<FeedProductDetailScreen> {
         }
       },
     );
-    if (saved && mounted)
+    if (saved && mounted) {
       toast(
           context, usage == null ? 'Feed usage logged' : 'Feed usage updated');
+    }
   }
 
   Future<void> _delete(String path, String description) async {
@@ -152,9 +220,10 @@ class _FeedProductDetailScreenState extends State<FeedProductDetailScreen> {
       lastDate: DateTime(2100),
       helpText: 'Choose a date in the month to view',
     );
-    if (picked != null)
+    if (picked != null) {
       setState(() => _month =
           '${picked.year.toString().padLeft(4, '0')}-${picked.month.toString().padLeft(2, '0')}');
+    }
   }
 
   @override
@@ -244,7 +313,10 @@ class _FeedProductDetailScreenState extends State<FeedProductDetailScreen> {
                     if (_tab == 0) ...[
                       PageHeader(title: 'Deliveries', actions: [
                         FilledButton.icon(
-                            onPressed: () => _purchaseForm(product),
+                            onPressed: () => _purchaseForm(
+                                  product,
+                                  kgPerBag: kgPerBag,
+                                ),
                             icon: const Icon(Icons.add),
                             label: const Text('Add delivery'))
                       ]),
@@ -264,10 +336,11 @@ class _FeedProductDetailScreenState extends State<FeedProductDetailScreen> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                  Text('${qty(purchase['bags'])} bags received',
+                                  Text(
+                                      '${qty(purchase['entered_quantity'] ?? purchase['bags'])} ${purchase['entered_unit'] ?? 'bags'} received',
                                       style: theme.textTheme.titleMedium),
                                   Text(
-                                      '${fmtDate(purchase['delivery_date'])} • ${money(purchase['cost_per_bag'])} per bag',
+                                      '${fmtDate(purchase['delivery_date'])} • ${money(purchase['rate_per_unit'] ?? purchase['cost_per_bag'])} per ${purchase['entered_unit'] ?? 'bag'}',
                                       style: theme.textTheme.bodySmall
                                           ?.copyWith(color: theme.hintColor)),
                                 ])),
@@ -275,8 +348,11 @@ class _FeedProductDetailScreenState extends State<FeedProductDetailScreen> {
                                 style: theme.textTheme.titleSmall?.copyWith(
                                     color: theme.colorScheme.primary)),
                             IconButton(
-                                onPressed: () =>
-                                    _purchaseForm(product, purchase: purchase),
+                                onPressed: () => _purchaseForm(
+                                      product,
+                                      kgPerBag: kgPerBag,
+                                      purchase: purchase,
+                                    ),
                                 icon: const Icon(Icons.edit_outlined)),
                             IconButton(
                                 onPressed: () => _delete(
@@ -388,21 +464,27 @@ class _FeedProductDetailScreenState extends State<FeedProductDetailScreen> {
                                       '${qty(row['bags_equivalent'])} bags used',
                                       style: theme.textTheme.titleMedium),
                                   Text(
-                                      '${fmtDate(row['usage_date'])} • ${row['batch_name'] ?? 'All batches'}',
+                                      '${fmtDate(row['usage_date'])} • ${row['remarks'] ?? row['batch_name'] ?? 'All batches'}',
                                       style: theme.textTheme.bodySmall
                                           ?.copyWith(color: theme.hintColor)),
                                 ])),
-                            IconButton(
-                                onPressed: () => _usageForm(
-                                    product, stock, batches,
-                                    usage: row),
-                                icon: const Icon(Icons.edit_outlined)),
-                            IconButton(
-                                onPressed: () => _delete(
-                                    '/feed/usage/${row['id']}',
-                                    'this usage record'),
-                                icon: Icon(Icons.delete_outline,
-                                    color: theme.colorScheme.error)),
+                            if (row['preparation_id'] == null) ...[
+                              IconButton(
+                                  onPressed: () => _usageForm(
+                                      product, stock, batches,
+                                      usage: row),
+                                  icon: const Icon(Icons.edit_outlined)),
+                              IconButton(
+                                  onPressed: () => _delete(
+                                      '/feed/usage/${row['id']}',
+                                      'this usage record'),
+                                  icon: Icon(Icons.delete_outline,
+                                      color: theme.colorScheme.error)),
+                            ] else
+                              const Padding(
+                                padding: EdgeInsets.all(8),
+                                child: Icon(Icons.lock_outline, size: 18),
+                              ),
                           ])),
                         ),
                       if (usageHasMore)

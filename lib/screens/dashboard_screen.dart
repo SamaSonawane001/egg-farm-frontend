@@ -45,6 +45,11 @@ class DashboardScreen extends StatelessWidget {
               icon: Icons.trending_up,
               label: 'Monthly revenue (invoices)',
               value: money(d['month_revenue'])),
+          StatCard(
+              icon: Icons.pending_actions_outlined,
+              label: 'Pending Payments (Unpaid Bills)',
+              value: money(d['pending_payments']),
+              color: AppColors.yolk),
           InkWell(
             borderRadius: BorderRadius.circular(14),
             onTap: () {

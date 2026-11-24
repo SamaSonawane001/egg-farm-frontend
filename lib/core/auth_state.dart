@@ -14,6 +14,8 @@ class AuthState extends ChangeNotifier {
   String get ownerName => '${user?['owner_name'] ?? ''}';
   String get mobile => '${user?['mobile'] ?? ''}';
   String? get avatarUrl => user?['avatar_url'] as String?;
+  String? get signatureUrl => user?['signature_url'] as String?;
+  String? get paymentQrUrl => user?['payment_qr_url'] as String?;
 
   Future<void> init() async {
     try {
@@ -98,7 +100,7 @@ class AuthState extends ChangeNotifier {
   Future<void> updateProfile(Map<String, String> fields,
       {Uint8List? avatar, String? avatarName}) async {
     if (avatar != null) await uploadAvatar(avatar, avatarName: avatarName);
-    user = Map<String, dynamic>.from(await _api.put('/profile', fields));
+    user = Map<String, dynamic>.from(await _api.put('/farm/profile', fields));
     await (await SharedPreferences.getInstance())
         .setString('user', jsonEncode(user));
     notifyListeners();
@@ -115,6 +117,32 @@ class AuthState extends ChangeNotifier {
     final updatedUser = Map<String, dynamic>.from(res['user']);
     updatedUser['avatar_url'] = res['avatarUrl'];
     user = updatedUser;
+    await (await SharedPreferences.getInstance())
+        .setString('user', jsonEncode(user));
+    notifyListeners();
+  }
+
+  Future<void> uploadFarmAsset(
+      String asset, Uint8List image, String imageName) async {
+    final path = asset == 'signature' ? '/farm/signature' : '/farm/payment-qr';
+    final res = Map<String, dynamic>.from(await _api.multipart(
+      'POST',
+      path,
+      const {},
+      fileBytes: image,
+      fileName: imageName,
+      fileField: 'image',
+    ));
+    user = Map<String, dynamic>.from(res['user']);
+    await (await SharedPreferences.getInstance())
+        .setString('user', jsonEncode(user));
+    notifyListeners();
+  }
+
+  Future<void> removeFarmAsset(String asset) async {
+    final path = asset == 'signature' ? '/farm/signature' : '/farm/payment-qr';
+    final res = Map<String, dynamic>.from(await _api.delete(path));
+    user = Map<String, dynamic>.from(res['user']);
     await (await SharedPreferences.getInstance())
         .setString('user', jsonEncode(user));
     notifyListeners();

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../core/api_client.dart';
 import '../core/theme.dart';
-import '../widgets/bill_upload_picker.dart';
 import '../widgets/common.dart';
 import '../widgets/form_dialog.dart';
 
@@ -60,78 +59,76 @@ class _RawMaterialDetailScreenState extends State<RawMaterialDetailScreen> {
     double kgPerBag,
     VoidCallback reload,
   ) async {
-    final billUpload = BillUploadController();
-    try {
-      final saved = await showFormDialog(
-        context,
-        title: 'Add Inward Stock · आवक · ${material['name']}',
-        fields: [
-          const FieldSpec(
-            'quantity',
-            'Quantity received',
-            type: FieldType.number,
-            validator: _positiveQuantityValidator,
-          ),
-          const FieldSpec(
-            'unit',
-            'Unit',
-            type: FieldType.select,
-            options: _stockUnits,
-          ),
-          const FieldSpec('date', 'Received on', type: FieldType.date),
-          const FieldSpec(
-            'vendor_name',
-            'Supplier / vendor',
-            required: false,
-          ),
-          const FieldSpec('bill_number', 'Bill number', required: false),
-          const FieldSpec(
-            'rate_per_unit',
-            'Rate per entered unit',
-            type: FieldType.number,
-            validator: _rateValidator,
-          ),
-          const FieldSpec(
-            'remarks',
-            'Notes',
-            type: FieldType.multiline,
-            required: false,
-          ),
-        ],
-        preview: (values) =>
-            'Total amount: ${money(asD(values['quantity']) * asD(values['rate_per_unit']))} · Stock added: ${qty(_toKg(asD(values['quantity']), values['unit'] ?? 'kg', kgPerBag))} kg',
-        extraContentBuilder: (_) => BillUploadPicker(
-          controller: billUpload,
-          moduleName: 'raw_materials',
+    final saved = await showFormDialog(
+      context,
+      title: 'Add Inward Stock · आवक · ${material['name']}',
+      initial: {'kg_per_bag': kgPerBag},
+      fields: [
+        const FieldSpec(
+          'quantity',
+          'Quantity received',
+          type: FieldType.number,
+          validator: _positiveQuantityValidator,
         ),
-        onSaveAttempt: billUpload.clearError,
-        isSubmitErrorHandled: (_) => billUpload.error != null,
-        onSubmit: (values) async {
-          final quantity = double.parse(values['quantity']!);
-          final rate = double.parse(values['rate_per_unit']!);
-          final billImageUrl =
-              await billUpload.upload(moduleName: 'raw_materials');
-          await ApiClient.instance.post('/raw-materials/inward', {
-            'material_id': widget.materialId,
-            'quantity': quantity,
-            'unit': values['unit'],
-            'date': values['date'],
-            'supplier': values['vendor_name'],
-            'vendor_name': values['vendor_name'],
-            'bill_number': values['bill_number'],
-            'bill_image_url': billImageUrl,
-            'rate_per_unit': rate,
-            'total_amount': double.parse((quantity * rate).toStringAsFixed(2)),
-            'remarks': values['remarks'],
-          });
-        },
-      );
-      if (saved && mounted) {
-        reload();
-        toast(context, 'Inward stock recorded');
-      }
-    } finally {
-      billUpload.dispose();
+        const FieldSpec(
+          'unit',
+          'Unit',
+          type: FieldType.select,
+          options: _stockUnits,
+        ),
+        const FieldSpec('date', 'Received on', type: FieldType.date),
+        const FieldSpec(
+          'vendor_name',
+          'Supplier / vendor',
+          required: false,
+        ),
+        const FieldSpec('bill_number', 'Bill number', required: false),
+        FieldSpec(
+          'kg_per_bag',
+          'Bag weight in kg',
+          type: FieldType.number,
+          readOnly: true,
+          visibleWhen: (values) => values['unit'] == 'bags',
+        ),
+        const FieldSpec(
+          'rate_per_unit',
+          'Rate per 1 kg (₹)',
+          type: FieldType.number,
+          validator: _rateValidator,
+          labelForValues: _rateLabel,
+        ),
+        const FieldSpec(
+          'remarks',
+          'Notes',
+          type: FieldType.multiline,
+          required: false,
+        ),
+      ],
+      preview: (values) =>
+          'Total amount: ${money(asD(values['quantity']) * asD(values['rate_per_unit']))} · Stock added: ${qty(_toKg(asD(values['quantity']), values['unit'] ?? 'kg', kgPerBag))} kg',
+      onSubmit: (values) async {
+        final quantity = double.parse(values['quantity']!);
+        final rate = double.parse(values['rate_per_unit']!);
+        await ApiClient.instance.post('/raw-materials/inward', {
+          'material_id': widget.materialId,
+          'quantity': quantity,
+          'unit': values['unit'],
+          'date': values['date'],
+          'supplier': values['vendor_name'],
+          'vendor_name': values['vendor_name'],
+          'bill_number': values['bill_number'],
+          'rate_per_unit': rate,
+          'total_amount': double.parse((quantity * rate).toStringAsFixed(2)),
+          'kg_per_bag': asD(values['kg_per_bag']) > 0
+              ? asD(values['kg_per_bag'])
+              : kgPerBag,
+          'remarks': values['remarks'],
+        });
+      },
+    );
+    if (saved && mounted) {
+      reload();
+      toast(context, 'Inward stock recorded');
     }
   }
 
@@ -197,6 +194,115 @@ class _RawMaterialDetailScreenState extends State<RawMaterialDetailScreen> {
     }
   }
 
+  Future<void> _editTransaction(
+    Map<String, dynamic> transaction,
+    double kgPerBag,
+    VoidCallback reload,
+  ) async {
+    final isInward = transaction['transaction_type'] == 'INWARD';
+    final enteredUnit = '${transaction['entered_unit'] ?? 'kg'}';
+    final quantity =
+        asD(transaction['entered_quantity'] ?? transaction['quantity']);
+    final saved = await showFormDialog(
+      context,
+      title: isInward ? 'Edit inward stock · आवक' : 'Edit usage · दळण',
+      initial: {
+        'date': '${transaction['transaction_date']}'.substring(0, 10),
+        'quantity': quantity.toString(),
+        'unit': enteredUnit,
+        'supplier':
+            '${transaction['supplier'] ?? transaction['vendor_name'] ?? ''}',
+        'vendor_name':
+            '${transaction['vendor_name'] ?? transaction['supplier'] ?? ''}',
+        'rate_per_unit': '${transaction['rate_per_unit'] ?? 0}',
+        'kg_per_bag': '${transaction['entered_kg_per_unit'] ?? kgPerBag}',
+        'remarks': '${transaction['remarks'] ?? ''}',
+      },
+      fields: [
+        const FieldSpec('date', 'Date', type: FieldType.date),
+        const FieldSpec('quantity', 'Quantity',
+            type: FieldType.number, validator: _positiveQuantityValidator),
+        const FieldSpec('unit', 'Unit',
+            type: FieldType.select, options: _stockUnits),
+        if (isInward) ...[
+          const FieldSpec('vendor_name', 'Supplier / notes', required: false),
+          FieldSpec(
+            'kg_per_bag',
+            'Bag weight in kg',
+            type: FieldType.number,
+            readOnly: true,
+            visibleWhen: (values) => values['unit'] == 'bags',
+          ),
+          FieldSpec(
+            'rate_per_unit',
+            'Rate per 1 kg (₹)',
+            type: FieldType.number,
+            validator: _rateValidator,
+            labelForValues: _rateLabel,
+          ),
+        ],
+        const FieldSpec('remarks', 'Notes',
+            type: FieldType.multiline, required: false),
+      ],
+      onSubmit: (values) async {
+        final body = <String, dynamic>{
+          'date': values['date'],
+          'quantity': double.parse(values['quantity']!),
+          'unit': values['unit'],
+          'remarks': values['remarks'],
+        };
+        if (isInward) {
+          final quantityValue = double.parse(values['quantity']!);
+          final rate = double.parse(values['rate_per_unit'] ?? '0');
+          body.addAll({
+            'supplier': values['vendor_name'],
+            'vendor_name': values['vendor_name'],
+            'rate_per_unit': rate,
+            'total_amount':
+                double.parse((quantityValue * rate).toStringAsFixed(2)),
+            'kg_per_bag': asD(values['kg_per_bag']) > 0
+                ? asD(values['kg_per_bag'])
+                : kgPerBag,
+          });
+          await ApiClient.instance
+              .put('/raw-materials/inward/${transaction['id']}', body);
+        } else {
+          await ApiClient.instance
+              .put('/raw-materials/usage/${transaction['id']}', body);
+        }
+      },
+    );
+    if (saved && mounted) {
+      reload();
+      toast(context, 'Raw material entry updated');
+    }
+  }
+
+  Future<void> _deleteTransaction(
+      Map<String, dynamic> transaction, VoidCallback reload) async {
+    final isInward = transaction['transaction_type'] == 'INWARD';
+    if (!await confirmDelete(
+        context,
+        isInward
+            ? 'this inward stock entry'
+            : 'this usage record${transaction['processing_id'] == null ? '' : ' and its feed mix batch'}')) {
+      return;
+    }
+    try {
+      await ApiClient.instance.delete(
+        isInward
+            ? '/raw-materials/inward/${transaction['id']}'
+            : '/raw-materials/usage/${transaction['id']}',
+      );
+      if (mounted) {
+        reload();
+        toast(context, 'Raw material entry deleted');
+      }
+    } catch (error) {
+      if (mounted) toast(context, '$error', error: true);
+    }
+  }
+
   static String? _positiveQuantityValidator(
     String? value,
     Map<String, String> _,
@@ -209,6 +315,13 @@ class _RawMaterialDetailScreenState extends State<RawMaterialDetailScreen> {
 
   static String? _rateValidator(String? value, Map<String, String> _) =>
       decimalValueError(value, maxDecimalPlaces: 3);
+
+  static String _rateLabel(Map<String, String> values) =>
+      switch (values['unit']) {
+        'quintal' => 'Rate per 1 Quintal (₹)',
+        'bags' => 'Rate per 1 Bag (₹)',
+        _ => 'Rate per 1 kg (₹)',
+      };
 
   Future<void> _selectMonth() async {
     final current = DateTime.tryParse('$_month-01') ?? DateTime.now();
@@ -337,6 +450,8 @@ class _RawMaterialDetailScreenState extends State<RawMaterialDetailScreen> {
                     transaction: row,
                     materialName: materialName,
                     unit: unit,
+                    onEdit: () => _editTransaction(row, kgPerBag, reload),
+                    onDelete: () => _deleteTransaction(row, reload),
                   ),
                 ),
             ] else ...[
@@ -385,6 +500,8 @@ class _RawMaterialDetailScreenState extends State<RawMaterialDetailScreen> {
                     transaction: row,
                     materialName: materialName,
                     unit: unit,
+                    onEdit: () => _editTransaction(row, kgPerBag, reload),
+                    onDelete: () => _deleteTransaction(row, reload),
                   ),
                 ),
             ],
@@ -397,11 +514,15 @@ class _MaterialTransactionCard extends StatelessWidget {
   final Map<String, dynamic> transaction;
   final String materialName;
   final String unit;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
   const _MaterialTransactionCard({
     required this.transaction,
     required this.materialName,
     required this.unit,
+    required this.onEdit,
+    required this.onDelete,
   });
 
   @override
@@ -460,13 +581,17 @@ class _MaterialTransactionCard extends StatelessWidget {
             ],
           ),
         ),
-        if (isInward && transaction['bill_image_url'] != null)
-          IconButton(
-            tooltip: 'View bill',
-            onPressed: () =>
-                showBillPreview(context, '${transaction['bill_image_url']}'),
-            icon: const Icon(Icons.receipt_long_outlined),
-          ),
+        IconButton(
+          tooltip: 'Edit',
+          onPressed: onEdit,
+          icon: const Icon(Icons.edit_outlined),
+        ),
+        IconButton(
+          tooltip: 'Delete',
+          onPressed: onDelete,
+          icon: Icon(Icons.delete_outline,
+              color: Theme.of(context).colorScheme.error),
+        ),
         Text(
           '${isInward ? '+' : '-'}$quantity $enteredUnit',
           style: TextStyle(color: color, fontWeight: FontWeight.w700),
