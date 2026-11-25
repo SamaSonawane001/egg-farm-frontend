@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -14,9 +16,16 @@ import 'customer_ledger_screen.dart';
 import '../widgets/common.dart';
 
 const kInvoiceTypes = {
-  'egg_sale': 'Egg Sale',
-  'spent_hen_sale': 'Spent Hen Sale',
-  'feed_trade': 'Feed Trade'
+  'egg_sale': 'Egg Sale • अंडी विक्री',
+  'spent_hen_sale':
+      'Spent Hen / Cull Birds • कोंबडी विक्री (अंडी क्षमता संपलेले पक्षी)',
+  'poultry_manure_sale': 'Poultry Manure Sale • कोंबडी खत विक्री',
+  'feed_trade': 'Feed / Raw Material Sale • फीड / कच्चा माल विक्री',
+};
+const _manureSaleUnits = {
+  'bag': 'Bags / पोती',
+  'tractor_trolley': 'Tractor Trolley / ट्रॉली',
+  'ton': 'Ton / टन',
 };
 const _whatsAppChannel = MethodChannel('egg_farm/invoice_share');
 
@@ -378,26 +387,29 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                                           color: t.colorScheme.primary)),
                                 ]),
                                 const SizedBox(height: 6),
-                                Row(children: [
-                                  Pill(
-                                      kInvoiceTypes[i['invoice_type']] ??
-                                          '${i['invoice_type']}',
-                                      AppColors.yolk),
-                                  const SizedBox(width: 8),
-                                  Pill(
-                                    i['payment_status'] == 'paid'
-                                        ? 'Paid'
-                                        : 'Unpaid (Pending)',
-                                    i['payment_status'] == 'paid'
-                                        ? AppColors.primary
-                                        : AppColors.yolk,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                      '${fmtDate(i['invoice_date'])}  •  ${i['items_count']} items',
-                                      style: t.textTheme.bodySmall
-                                          ?.copyWith(color: t.hintColor)),
-                                ]),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 6,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: [
+                                    Pill(
+                                        kInvoiceTypes[i['invoice_type']] ??
+                                            '${i['invoice_type']}',
+                                        AppColors.yolk),
+                                    Pill(
+                                      i['payment_status'] == 'paid'
+                                          ? 'Paid'
+                                          : 'Unpaid (Pending)',
+                                      i['payment_status'] == 'paid'
+                                          ? AppColors.primary
+                                          : AppColors.yolk,
+                                    ),
+                                    Text(
+                                        '${fmtDate(i['invoice_date'])}  •  ${i['items_count']} items',
+                                        style: t.textTheme.bodySmall
+                                            ?.copyWith(color: t.hintColor)),
+                                  ],
+                                ),
                                 const SizedBox(height: 8),
                                 Wrap(spacing: 8, runSpacing: 4, children: [
                                   OutlinedButton.icon(
@@ -513,7 +525,8 @@ class _Item {
   final desc = TextEditingController();
   final qtyC = TextEditingController(text: '1');
   final price = TextEditingController();
-  String eggUnit = 'eggs';
+  String eggUnit = 'tray';
+  String saleUnit = 'bag';
   double amountFor(String invoiceType) => _roundCurrency(
         asD(qtyC.text) *
             asD(price.text) *
@@ -547,6 +560,12 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
       text: widget.defaultTax == 0 ? '' : '${widget.defaultTax}');
   final List<_Item> _items = [_Item()];
   bool _saving = false;
+  bool _customerLookupLoading = false;
+  Map<String, dynamic>? _matchedCustomer;
+  String? _customerLookupError;
+  String? _autoFilledCustomerName;
+  Timer? _customerLookupTimer;
+  int _customerLookupRequest = 0;
 
   double get _eggQuantity => _type != 'egg_sale'
       ? 0
@@ -563,10 +582,119 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
 
   @override
   void dispose() {
+    _customerLookupTimer?.cancel();
+    _name.dispose();
+    _mobile.dispose();
+    _notes.dispose();
+    _tax.dispose();
     for (final i in _items) {
       i.dispose();
     }
     super.dispose();
+  }
+
+  String _normalizePhone(String value) {
+    var digits = value.replaceAll(RegExp(r'\D'), '');
+    if (digits.length > 10 && digits.startsWith('91')) {
+      digits = digits.substring(2);
+    }
+    if (digits.length == 11 && digits.startsWith('0')) {
+      digits = digits.substring(1);
+    }
+    return digits.length == 10 ? digits : '';
+  }
+
+  void _onCustomerMobileChanged(String value) {
+    _customerLookupTimer?.cancel();
+    final request = ++_customerLookupRequest;
+    final phone = _normalizePhone(value);
+    if (phone.isEmpty) {
+      final previousSuggestion = _autoFilledCustomerName;
+      setState(() {
+        _matchedCustomer = null;
+        _customerLookupError = null;
+        _customerLookupLoading = false;
+      });
+      if (previousSuggestion != null &&
+          _name.text.trim() == previousSuggestion) {
+        _name.clear();
+      }
+      _autoFilledCustomerName = null;
+      return;
+    }
+
+    setState(() {
+      _matchedCustomer = null;
+      _customerLookupError = null;
+      _customerLookupLoading = true;
+    });
+    _customerLookupTimer = Timer(
+      const Duration(milliseconds: 300),
+      () => _lookupCustomer(phone, request),
+    );
+  }
+
+  Future<void> _lookupCustomer(String phone, int request) async {
+    try {
+      final response = Map<String, dynamic>.from(
+        await ApiClient.instance.get(
+          '/customers',
+          query: {'search': phone, 'page': '1', 'limit': '50'},
+        ) as Map,
+      );
+      final customers = List<Map<String, dynamic>>.from(
+        (response['data'] as List).map(
+          (customer) => Map<String, dynamic>.from(customer as Map),
+        ),
+      );
+      Map<String, dynamic>? match;
+      for (final customer in customers) {
+        final savedPhone = _normalizePhone(
+          '${customer['normalized_phone'] ?? customer['phone'] ?? ''}',
+        );
+        if (savedPhone == phone) {
+          match = customer;
+          break;
+        }
+      }
+      if (!mounted ||
+          request != _customerLookupRequest ||
+          _normalizePhone(_mobile.text) != phone) {
+        return;
+      }
+      final savedName = '${match?['name'] ?? ''}'.trim();
+      setState(() {
+        _matchedCustomer = match;
+        _customerLookupLoading = false;
+        if (savedName.isNotEmpty) {
+          _name.value = TextEditingValue(
+            text: savedName,
+            selection: TextSelection.collapsed(offset: savedName.length),
+          );
+          _autoFilledCustomerName = savedName;
+        }
+      });
+    } catch (error) {
+      if (!mounted ||
+          request != _customerLookupRequest ||
+          _normalizePhone(_mobile.text) != phone) {
+        return;
+      }
+      setState(() {
+        _customerLookupLoading = false;
+        _customerLookupError = 'Could not check existing Khata: $error';
+      });
+    }
+  }
+
+  void _useMatchedCustomerName() {
+    final name = '${_matchedCustomer?['name'] ?? ''}'.trim();
+    if (name.isEmpty) return;
+    _name.value = TextEditingValue(
+      text: name,
+      selection: TextSelection.collapsed(offset: name.length),
+    );
+    _autoFilledCustomerName = name;
   }
 
   Future<void> _save() async {
@@ -591,6 +719,7 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
               'egg_quantity': _type == 'egg_sale'
                   ? (asD(i.qtyC.text) * (i.eggUnit == 'eggs' ? 1 : 30)).round()
                   : null,
+              'sale_unit': _type == 'poultry_manure_sale' ? i.saleUnit : null,
             }
         ],
       });
@@ -635,10 +764,15 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 initialValue: _type,
+                isExpanded: true,
+                itemHeight: null,
                 decoration: dec(context, 'Invoice type'),
                 items: [
                   for (final e in kInvoiceTypes.entries)
-                    DropdownMenuItem(value: e.key, child: Text(e.value))
+                    DropdownMenuItem(
+                      value: e.key,
+                      child: Text(e.value, softWrap: true, maxLines: 3),
+                    )
                 ],
                 onChanged: (v) => setState(() => _type = v ?? _type),
               ),
@@ -657,11 +791,39 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
                 autovalidateMode: AutovalidateMode.onUserInteraction,
                 decoration: dec(context, 'Customer WhatsApp number',
                     hint: '9876543210', icon: Icons.phone_outlined),
+                onChanged: _onCustomerMobileChanged,
                 validator: (value) => RegExp(r'^[6-9]\d{9}$')
                         .hasMatch(value ?? '')
                     ? null
                     : 'कृपया वैध १० अंकी मोबाईल नंबर टाका (उदा. 9876543210) / Please enter a valid 10-digit mobile number',
               ),
+              if (_customerLookupLoading)
+                const Padding(
+                  padding: EdgeInsets.only(top: 6),
+                  child: LinearProgressIndicator(minHeight: 2),
+                ),
+              if (_matchedCustomer != null)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: InputChip(
+                      avatar: const Icon(Icons.link, size: 18),
+                      label: Text(
+                        'Existing Khata: ${_matchedCustomer!['name']}',
+                      ),
+                      onPressed: _useMatchedCustomerName,
+                    ),
+                  ),
+                ),
+              if (_customerLookupError != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    _customerLookupError!,
+                    style: TextStyle(color: t.colorScheme.error),
+                  ),
+                ),
               const SizedBox(height: 12),
               DatePickerField(
                   label: 'Invoice date',
@@ -750,7 +912,25 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
                                 value: 'tray', child: Text('Tray (30 eggs)')),
                           ],
                           onChanged: (value) => setState(
-                              () => _items[idx].eggUnit = value ?? 'eggs'),
+                              () => _items[idx].eggUnit = value ?? 'tray'),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                      if (_type == 'poultry_manure_sale') ...[
+                        DropdownButtonFormField<String>(
+                          initialValue: _items[idx].saleUnit,
+                          isExpanded: true,
+                          decoration: dec(context, 'Sale unit'),
+                          items: [
+                            for (final unit in _manureSaleUnits.entries)
+                              DropdownMenuItem(
+                                value: unit.key,
+                                child: Text(unit.value),
+                              ),
+                          ],
+                          onChanged: (value) => setState(
+                            () => _items[idx].saleUnit = value ?? 'bag',
+                          ),
                         ),
                         const SizedBox(height: 10),
                       ],
@@ -766,7 +946,9 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
                                     ? (_items[idx].eggUnit == 'eggs'
                                         ? 'Eggs'
                                         : 'Trays')
-                                    : 'Qty'),
+                                    : _type == 'poultry_manure_sale'
+                                        ? 'Quantity'
+                                        : 'Qty'),
                             onChanged: (_) => setState(() {}),
                             validator: (value) {
                               final basic = posNum(value);
@@ -789,7 +971,9 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
                                 context,
                                 _type == 'egg_sale'
                                     ? 'Rate / egg (₹)'
-                                    : 'Rate'),
+                                    : _type == 'poultry_manure_sale'
+                                        ? 'Rate / unit (₹)'
+                                        : 'Rate'),
                             onChanged: (_) => setState(() {}),
                             validator: (s) => (s ?? '').trim().isEmpty
                                 ? 'Required'

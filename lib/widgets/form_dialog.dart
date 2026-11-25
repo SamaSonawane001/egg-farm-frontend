@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../core/api_client.dart';
 import 'common.dart';
 
 enum FieldType { text, number, integer, date, multiline, select, phone }
@@ -154,7 +155,11 @@ class _FormDialogState extends State<_FormDialog> {
       if (mounted) {
         setState(() {
           _saving = false;
-          _error = widget.isSubmitErrorHandled?.call(e) == true ? null : '$e';
+          _error = widget.isSubmitErrorHandled?.call(e) == true
+              ? null
+              : e is ApiException
+                  ? e.message
+                  : e.toString();
         });
       }
     }

@@ -113,111 +113,113 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => DataLoader<List<Map<String, dynamic>>>(
-        load: _load,
-        builder: (context, medicines, reload) {
-          final needle = _searchTerm.trim().toLowerCase();
-          final visibleMedicines = medicines.where((medicine) =>
-              '${medicine['name']} ${medicine['category']} ${medicine['unit']} ${medicine['batch_numbers']}'
-                  .toLowerCase()
-                  .contains(needle));
+  Widget build(BuildContext context) {
+    return DataLoader<List<Map<String, dynamic>>>(
+      load: _load,
+      builder: (context, medicines, reload) {
+        final needle = _searchTerm.trim().toLowerCase();
+        final visibleMedicines = medicines.where((medicine) =>
+            '${medicine['name']} ${medicine['category']} ${medicine['unit']} ${medicine['batch_numbers']}'
+                .toLowerCase()
+                .contains(needle));
 
-          return Column(children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-              child: TextField(
-                controller: _search,
-                onChanged: (value) => setState(() => _searchTerm = value),
-                decoration: dec(
-                  context,
-                  'Search medicines, batches and categories',
-                  icon: Icons.search,
-                ).copyWith(
-                  suffixIcon: _searchTerm.isEmpty
-                      ? null
-                      : IconButton(
-                          onPressed: () {
-                            _search.clear();
-                            setState(() => _searchTerm = '');
-                          },
-                          icon: const Icon(Icons.clear),
-                        ),
-                ),
+        return Column(children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: TextField(
+              controller: _search,
+              onChanged: (value) => setState(() => _searchTerm = value),
+              decoration: dec(
+                context,
+                'Search medicines, batches and categories',
+                icon: Icons.search,
+              ).copyWith(
+                suffixIcon: _searchTerm.isEmpty
+                    ? null
+                    : IconButton(
+                        onPressed: () {
+                          _search.clear();
+                          setState(() => _searchTerm = '');
+                        },
+                        icon: const Icon(Icons.clear),
+                      ),
               ),
             ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  PageHeader(
-                    title: 'Medicines & Health · औषधे व लस',
-                    subtitle:
-                        'Medicine stock, expiry alerts and flock treatment',
-                    actions: [
-                      FilledButton.icon(
-                        onPressed: () => _medicineForm(context, reload: reload),
-                        icon: const Icon(Icons.add),
-                        label: const Text('Add Medicine'),
-                      ),
-                    ],
-                  ),
-                  if (visibleMedicines.isEmpty && needle.isNotEmpty)
-                    const EmptyState(
-                      icon: Icons.search_off,
-                      text: 'No medicines match your search.',
-                    )
-                  else if (medicines.isEmpty)
-                    const EmptyState(
-                      icon: Icons.medication_outlined,
-                      text:
-                          'No medicines added yet. Add a medicine to begin tracking stock.',
-                    )
-                  else
-                    LayoutBuilder(builder: (context, constraints) {
-                      final columns = constraints.maxWidth >= 900
-                          ? 3
-                          : constraints.maxWidth >= 580
-                              ? 2
-                              : 1;
-                      final width =
-                          (constraints.maxWidth - 14 * (columns - 1)) / columns;
-                      return Wrap(
-                        spacing: 14,
-                        runSpacing: 14,
-                        children: [
-                          for (final medicine in visibleMedicines)
-                            SizedBox(
-                              width: width,
-                              child: _MedicineCard(
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                PageHeader(
+                  title: 'Medicines & Health · औषधे व लस',
+                  subtitle: 'Medicine stock, expiry alerts and flock treatment',
+                  actions: [
+                    FilledButton.icon(
+                      onPressed: () => _medicineForm(context, reload: reload),
+                      icon: const Icon(Icons.add),
+                      label: const Text('Add Medicine'),
+                    ),
+                  ],
+                ),
+                const CentralInventoryBadge(),
+                if (visibleMedicines.isEmpty && needle.isNotEmpty)
+                  const EmptyState(
+                    icon: Icons.search_off,
+                    text: 'No medicines match your search.',
+                  )
+                else if (medicines.isEmpty)
+                  const EmptyState(
+                    icon: Icons.medication_outlined,
+                    text:
+                        'No medicines added yet. Add a medicine to begin tracking stock.',
+                  )
+                else
+                  LayoutBuilder(builder: (context, constraints) {
+                    final columns = constraints.maxWidth >= 900
+                        ? 3
+                        : constraints.maxWidth >= 580
+                            ? 2
+                            : 1;
+                    final width =
+                        (constraints.maxWidth - 14 * (columns - 1)) / columns;
+                    return Wrap(
+                      spacing: 14,
+                      runSpacing: 14,
+                      children: [
+                        for (final medicine in visibleMedicines)
+                          SizedBox(
+                            width: width,
+                            child: _MedicineCard(
+                              medicine: medicine,
+                              onOpen: () => context.push(
+                                '/medicines/${medicine['id']}',
+                                extra: {
+                                  'name': '${medicine['name']}',
+                                  'unit': '${medicine['unit']}',
+                                },
+                              ),
+                              onEdit: () => _medicineForm(
+                                context,
                                 medicine: medicine,
-                                onOpen: () => context.push(
-                                  '/medicines/${medicine['id']}',
-                                  extra: {
-                                    'name': '${medicine['name']}',
-                                    'unit': '${medicine['unit']}',
-                                  },
-                                ),
-                                onEdit: () => _medicineForm(
-                                  context,
-                                  medicine: medicine,
-                                  reload: reload,
-                                ),
-                                onDelete: () => _deleteMedicine(
-                                  context,
-                                  medicine,
-                                  reload: reload,
-                                ),
+                                reload: reload,
+                              ),
+                              onDelete: () => _deleteMedicine(
+                                context,
+                                medicine,
+                                reload: reload,
                               ),
                             ),
-                        ],
-                      );
-                    }),
-                ],
-              ),
+                          ),
+                      ],
+                    );
+                  }),
+              ],
             ),
-          ]);
-        },
-      );
+          ),
+        ]);
+      },
+    );
+  }
 }
 
 class _MedicineCard extends StatelessWidget {

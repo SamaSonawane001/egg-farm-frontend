@@ -637,9 +637,10 @@ class _LedgerEntry extends StatelessWidget {
     final isPaid = paid >= billed - 0.005;
     final isPartial = paid > 0.005 && !isPaid;
     final invoiceType = switch ('${entry['invoice_type']}') {
-      'egg_sale' => 'Egg Sale',
-      'spent_hen_sale' => 'Spent Hen Sale',
-      'feed_trade' => 'Feed Trade',
+      'egg_sale' => 'Egg Sale • अंडी विक्री',
+      'spent_hen_sale' => 'Spent Hen / Cull Birds • कोंबडी विक्री',
+      'poultry_manure_sale' => 'Poultry Manure Sale • कोंबडी खत विक्री',
+      'feed_trade' => 'Feed / Raw Material Sale • फीड / कच्चा माल विक्री',
       _ => 'Invoice',
     };
     final eggCount = asD(entry['egg_quantity']);

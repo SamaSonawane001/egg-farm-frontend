@@ -597,6 +597,7 @@ class _ReadyFeedDetailScreenState extends State<ReadyFeedDetailScreen> {
                   ),
                 ),
               ]),
+              const CentralInventoryBadge(),
               LayoutBuilder(
                 builder: (context, constraints) {
                   final columns = constraints.maxWidth >= 900

@@ -106,114 +106,117 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => DataLoader<Map<String, dynamic>>(
-        load: _load,
-        builder: (context, data, reload) {
-          final materials = data['materials'] as List<Map<String, dynamic>>;
-          final kgPerBag =
-              asD(data['kgPerBag']) > 0 ? asD(data['kgPerBag']) : 50.0;
-          final needle = _searchTerm.trim().toLowerCase();
-          final visibleMaterials = materials.where((material) =>
-              '${material['name']} ${material['unit']}'
-                  .toLowerCase()
-                  .contains(needle));
+  Widget build(BuildContext context) {
+    return DataLoader<Map<String, dynamic>>(
+      load: _load,
+      builder: (context, data, reload) {
+        final materials = data['materials'] as List<Map<String, dynamic>>;
+        final kgPerBag =
+            asD(data['kgPerBag']) > 0 ? asD(data['kgPerBag']) : 50.0;
+        final needle = _searchTerm.trim().toLowerCase();
+        final visibleMaterials = materials.where((material) =>
+            '${material['name']} ${material['unit']}'
+                .toLowerCase()
+                .contains(needle));
 
-          return Column(children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-              child: TextField(
-                controller: _search,
-                onChanged: (value) => setState(() => _searchTerm = value),
-                decoration: dec(
-                  context,
-                  'Search raw materials',
-                  icon: Icons.search,
-                ).copyWith(
-                  suffixIcon: _searchTerm.isEmpty
-                      ? null
-                      : IconButton(
-                          onPressed: () {
-                            _search.clear();
-                            setState(() => _searchTerm = '');
-                          },
-                          icon: const Icon(Icons.clear),
-                        ),
-                ),
+        return Column(children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: TextField(
+              controller: _search,
+              onChanged: (value) => setState(() => _searchTerm = value),
+              decoration: dec(
+                context,
+                'Search raw materials',
+                icon: Icons.search,
+              ).copyWith(
+                suffixIcon: _searchTerm.isEmpty
+                    ? null
+                    : IconButton(
+                        onPressed: () {
+                          _search.clear();
+                          setState(() => _searchTerm = '');
+                        },
+                        icon: const Icon(Icons.clear),
+                      ),
               ),
             ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  PageHeader(
-                    title: 'Raw Material · कच्चा माल',
-                    subtitle: 'Raw material products and live stock',
-                    actions: [
-                      FilledButton.icon(
-                        onPressed: () => _materialForm(context, reload: reload),
-                        icon: const Icon(Icons.add),
-                        label: const Text('Add Raw Material Product'),
-                      ),
-                    ],
-                  ),
-                  if (visibleMaterials.isEmpty && needle.isNotEmpty)
-                    const EmptyState(
-                      icon: Icons.search_off,
-                      text: 'No raw materials match your search.',
-                    )
-                  else if (materials.isEmpty)
-                    const EmptyState(
-                      icon: Icons.inventory_2_outlined,
-                      text:
-                          'No raw materials yet. Add maize, soya, minerals or supplements to begin.',
-                    )
-                  else
-                    LayoutBuilder(builder: (context, constraints) {
-                      final columns = constraints.maxWidth >= 900
-                          ? 3
-                          : constraints.maxWidth >= 580
-                              ? 2
-                              : 1;
-                      final width =
-                          (constraints.maxWidth - 14 * (columns - 1)) / columns;
-                      return Wrap(
-                        spacing: 14,
-                        runSpacing: 14,
-                        children: [
-                          for (final material in visibleMaterials)
-                            SizedBox(
-                              width: width,
-                              child: _MaterialCard(
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                PageHeader(
+                  title: 'Raw Material · कच्चा माल',
+                  subtitle: 'Raw material products and live stock',
+                  actions: [
+                    FilledButton.icon(
+                      onPressed: () => _materialForm(context, reload: reload),
+                      icon: const Icon(Icons.add),
+                      label: const Text('Add Raw Material Product'),
+                    ),
+                  ],
+                ),
+                const CentralInventoryBadge(),
+                if (visibleMaterials.isEmpty && needle.isNotEmpty)
+                  const EmptyState(
+                    icon: Icons.search_off,
+                    text: 'No raw materials match your search.',
+                  )
+                else if (materials.isEmpty)
+                  const EmptyState(
+                    icon: Icons.inventory_2_outlined,
+                    text:
+                        'No raw materials yet. Add maize, soya, minerals or supplements to begin.',
+                  )
+                else
+                  LayoutBuilder(builder: (context, constraints) {
+                    final columns = constraints.maxWidth >= 900
+                        ? 3
+                        : constraints.maxWidth >= 580
+                            ? 2
+                            : 1;
+                    final width =
+                        (constraints.maxWidth - 14 * (columns - 1)) / columns;
+                    return Wrap(
+                      spacing: 14,
+                      runSpacing: 14,
+                      children: [
+                        for (final material in visibleMaterials)
+                          SizedBox(
+                            width: width,
+                            child: _MaterialCard(
+                              material: material,
+                              kgPerBag: kgPerBag,
+                              onOpen: () => context.push(
+                                '/raw-materials/${material['id']}',
+                                extra: {
+                                  'name': '${material['name']}',
+                                  'unit': '${material['unit']}',
+                                },
+                              ),
+                              onEdit: () => _materialForm(
+                                context,
                                 material: material,
-                                kgPerBag: kgPerBag,
-                                onOpen: () => context.push(
-                                  '/raw-materials/${material['id']}',
-                                  extra: {
-                                    'name': '${material['name']}',
-                                    'unit': '${material['unit']}',
-                                  },
-                                ),
-                                onEdit: () => _materialForm(
-                                  context,
-                                  material: material,
-                                  reload: reload,
-                                ),
-                                onDelete: () => _deleteMaterial(
-                                  context,
-                                  material,
-                                  reload: reload,
-                                ),
+                                reload: reload,
+                              ),
+                              onDelete: () => _deleteMaterial(
+                                context,
+                                material,
+                                reload: reload,
                               ),
                             ),
-                        ],
-                      );
-                    }),
-                ],
-              ),
+                          ),
+                      ],
+                    );
+                  }),
+              ],
             ),
-          ]);
-        },
-      );
+          ),
+        ]);
+      },
+    );
+  }
 }
 
 class _MaterialCard extends StatelessWidget {

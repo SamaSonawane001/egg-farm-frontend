@@ -333,6 +333,7 @@ class _MedicineDetailScreenState extends State<MedicineDetailScreen> {
                 ),
               ),
             ]),
+            const CentralInventoryBadge(),
             LayoutBuilder(builder: (context, box) {
               final columns = box.maxWidth >= 760 ? 3 : 1;
               final width =

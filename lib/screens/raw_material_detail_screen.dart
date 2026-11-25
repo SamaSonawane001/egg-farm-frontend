@@ -30,9 +30,16 @@ class _RawMaterialDetailScreenState extends State<RawMaterialDetailScreen> {
     MapEntry('quintal', 'Quintal'),
     MapEntry('bags', 'Bags'),
   ];
+  static const _processingUnits = [
+    MapEntry('kg', 'Kilogram (kg)'),
+    MapEntry('quintal', 'Quintal'),
+    MapEntry('bags', 'Bags'),
+    MapEntry('ton', 'Ton'),
+  ];
 
   double _toKg(double quantity, String unit, double kgPerBag) => switch (unit) {
         'quintal' => quantity * 100,
+        'ton' => quantity * 1000,
         'bags' => quantity * kgPerBag,
         _ => quantity,
       };
@@ -167,7 +174,7 @@ class _RawMaterialDetailScreenState extends State<RawMaterialDetailScreen> {
           'unit',
           'Unit',
           type: FieldType.select,
-          options: _stockUnits,
+          options: _processingUnits,
         ),
         const FieldSpec(
           'remarks',
@@ -222,8 +229,12 @@ class _RawMaterialDetailScreenState extends State<RawMaterialDetailScreen> {
         const FieldSpec('date', 'Date', type: FieldType.date),
         const FieldSpec('quantity', 'Quantity',
             type: FieldType.number, validator: _positiveQuantityValidator),
-        const FieldSpec('unit', 'Unit',
-            type: FieldType.select, options: _stockUnits),
+        FieldSpec(
+          'unit',
+          'Unit',
+          type: FieldType.select,
+          options: isInward ? _stockUnits : _processingUnits,
+        ),
         if (isInward) ...[
           const FieldSpec('vendor_name', 'Supplier / notes', required: false),
           FieldSpec(
@@ -374,6 +385,7 @@ class _RawMaterialDetailScreenState extends State<RawMaterialDetailScreen> {
                 ),
               ),
             ]),
+            const CentralInventoryBadge(),
             LayoutBuilder(builder: (context, box) {
               final columns = box.maxWidth >= 760 ? 3 : 1;
               final width =

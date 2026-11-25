@@ -125,41 +125,55 @@ class _FlockScreenState extends State<FlockScreen> {
         final batches = data['batches']!;
         final mortality = data['mortality']!;
         final t = Theme.of(context);
-        return ListView(padding: const EdgeInsets.all(16), children: [
-          PageHeader(
-            title: 'Flock & Mortality',
-            subtitle:
-                '${qty(batches.fold<double>(0, (s, b) => s + asD(b['active_birds'])))} live birds across ${batches.length} batches',
-            actions: [
-              FilledButton.icon(
-                onPressed: () => tab == 0
-                    ? _batchForm(reload)
-                    : _mortalityForm(reload, batches),
-                icon: const Icon(Icons.add),
-                label: Text(tab == 0 ? 'New batch' : 'Log mortality'),
-              ),
-            ],
-          ),
-          SegmentedButton<int>(
-            segments: const [
-              ButtonSegment(
-                  value: 0, label: Text('Batches'), icon: Icon(Icons.pets)),
-              ButtonSegment(
-                  value: 1,
-                  label: Text('Mortality'),
-                  icon: Icon(Icons.heart_broken_outlined)),
-            ],
-            selected: {tab},
-            onSelectionChanged: (s) => setState(() => tab = s.first),
-          ),
-          const SizedBox(height: 14),
-          if (tab == 0) ...[
-            if (batches.isEmpty)
-              const EmptyState(
-                  icon: Icons.pets_outlined,
-                  text: 'No batches yet. Add your first bird batch.'),
-            for (final b in batches)
-              Padding(
+        final rows = tab == 0 ? batches : mortality;
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: 3 + (rows.isEmpty ? 1 : rows.length),
+          itemBuilder: (context, index) {
+            if (index == 0) {
+              return PageHeader(
+                title: 'Flock & Mortality',
+                subtitle:
+                    '${qty(batches.fold<double>(0, (s, b) => s + asD(b['active_birds'])))} live birds across ${batches.length} batches',
+                actions: [
+                  FilledButton.icon(
+                    onPressed: () => tab == 0
+                        ? _batchForm(reload)
+                        : _mortalityForm(reload, batches),
+                    icon: const Icon(Icons.add),
+                    label: Text(tab == 0 ? 'New batch' : 'Log mortality'),
+                  ),
+                ],
+              );
+            }
+            if (index == 1) {
+              return SegmentedButton<int>(
+                segments: const [
+                  ButtonSegment(
+                      value: 0, label: Text('Batches'), icon: Icon(Icons.pets)),
+                  ButtonSegment(
+                      value: 1,
+                      label: Text('Mortality'),
+                      icon: Icon(Icons.heart_broken_outlined)),
+                ],
+                selected: {tab},
+                onSelectionChanged: (s) => setState(() => tab = s.first),
+              );
+            }
+            if (index == 2) return const SizedBox(height: 14);
+            final rowIndex = index - 3;
+            if (rows.isEmpty) {
+              return EmptyState(
+                icon: tab == 0 ? Icons.pets_outlined : Icons.favorite_outline,
+                text: tab == 0
+                    ? 'No batches yet. Add your first bird batch.'
+                    : 'No mortality recorded. Great!',
+              );
+            }
+            final row = rows[rowIndex];
+            if (tab == 0) {
+              final batch = row;
+              return Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: AppCard(
                   child: Column(
@@ -167,89 +181,86 @@ class _FlockScreenState extends State<FlockScreen> {
                       children: [
                         Row(children: [
                           Expanded(
-                              child: Text('${b['batch_name']}',
+                              child: Text('${batch['batch_name']}',
                                   style: t.textTheme.titleMedium)),
                           IconButton(
                               icon: const Icon(Icons.edit_outlined, size: 20),
-                              onPressed: () => _batchForm(reload, b: b)),
+                              onPressed: () => _batchForm(reload, b: batch)),
                           IconButton(
                               icon: Icon(Icons.delete_outline,
                                   size: 20, color: t.colorScheme.error),
                               onPressed: () => _delete(
-                                  '/flock/batches/${b['id']}',
-                                  'batch "${b['batch_name']}" and its mortality logs',
+                                  '/flock/batches/${batch['id']}',
+                                  'batch "${batch['batch_name']}" and its mortality logs',
                                   reload)),
                         ]),
-                        Text('Arrived ${fmtDate(b['arrival_date'])}',
+                        Text('Arrived ${fmtDate(batch['arrival_date'])}',
                             style: t.textTheme.bodySmall
                                 ?.copyWith(color: t.hintColor)),
                         const SizedBox(height: 12),
                         Wrap(spacing: 8, runSpacing: 8, children: [
-                          Pill('Purchased ${qty(b['quantity'])}',
+                          Pill('Purchased ${qty(batch['quantity'])}',
                               AppColors.info),
-                          Pill('Dead ${qty(b['total_mortality'])}',
+                          Pill('Dead ${qty(batch['total_mortality'])}',
                               AppColors.danger),
-                          Pill('Live ${qty(b['active_birds'])}',
+                          Pill('Live ${qty(batch['active_birds'])}',
                               AppColors.primary),
-                          Pill('@ ${money(b['unit_price'])}', AppColors.yolk),
+                          Pill('@ ${money(batch['unit_price'])}',
+                              AppColors.yolk),
                         ]),
                         const SizedBox(height: 10),
-                        Text('Total batch cost: ${money(b['total_cost'])}',
+                        Text('Total batch cost: ${money(batch['total_cost'])}',
                             style: t.textTheme.bodyMedium
                                 ?.copyWith(fontWeight: FontWeight.w600)),
-                        if ('${b['notes'] ?? ''}'.isNotEmpty)
+                        if ('${batch['notes'] ?? ''}'.isNotEmpty)
                           Padding(
                               padding: const EdgeInsets.only(top: 4),
-                              child: Text('${b['notes']}',
+                              child: Text('${batch['notes']}',
                                   style: t.textTheme.bodySmall)),
                       ]),
                 ),
+              );
+            }
+            final log = row;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: AppCard(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                child: Row(children: [
+                  CircleAvatar(
+                    backgroundColor: AppColors.danger.withOpacity(.12),
+                    child: Text('${log['dead_count']}',
+                        style: const TextStyle(
+                            color: AppColors.danger,
+                            fontWeight: FontWeight.w700)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('${log['batch_name']}',
+                              style: t.textTheme.titleMedium),
+                          Text(
+                              '${fmtDate(log['log_date'])}${'${log['cause'] ?? ''}'.isEmpty ? '' : '  •  ${log['cause']}'}',
+                              style: t.textTheme.bodySmall
+                                  ?.copyWith(color: t.hintColor)),
+                        ]),
+                  ),
+                  IconButton(
+                      icon: const Icon(Icons.edit_outlined, size: 20),
+                      onPressed: () => _mortalityForm(reload, batches, m: log)),
+                  IconButton(
+                      icon: Icon(Icons.delete_outline,
+                          size: 20, color: t.colorScheme.error),
+                      onPressed: () => _delete('/flock/mortality/${log['id']}',
+                          'this mortality log', reload)),
+                ]),
               ),
-          ] else ...[
-            if (mortality.isEmpty)
-              const EmptyState(
-                  icon: Icons.favorite_outline,
-                  text: 'No mortality recorded. Great!'),
-            for (final m in mortality)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: AppCard(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  child: Row(children: [
-                    CircleAvatar(
-                      backgroundColor: AppColors.danger.withOpacity(.12),
-                      child: Text('${m['dead_count']}',
-                          style: const TextStyle(
-                              color: AppColors.danger,
-                              fontWeight: FontWeight.w700)),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('${m['batch_name']}',
-                                style: t.textTheme.titleMedium),
-                            Text(
-                                '${fmtDate(m['log_date'])}${'${m['cause'] ?? ''}'.isEmpty ? '' : '  •  ${m['cause']}'}',
-                                style: t.textTheme.bodySmall
-                                    ?.copyWith(color: t.hintColor)),
-                          ]),
-                    ),
-                    IconButton(
-                        icon: const Icon(Icons.edit_outlined, size: 20),
-                        onPressed: () => _mortalityForm(reload, batches, m: m)),
-                    IconButton(
-                        icon: Icon(Icons.delete_outline,
-                            size: 20, color: t.colorScheme.error),
-                        onPressed: () => _delete('/flock/mortality/${m['id']}',
-                            'this mortality log', reload)),
-                  ]),
-                ),
-              ),
-          ],
-        ]);
+            );
+          },
+        );
       },
     );
   }

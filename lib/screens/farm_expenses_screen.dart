@@ -195,103 +195,108 @@ class _FarmExpensesScreenState extends State<FarmExpensesScreen> {
           final summary = data['summary'] as Map<String, dynamic>;
           final expenses = data['expenses'] as List<Map<String, dynamic>>;
           final theme = Theme.of(context);
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              PageHeader(
-                title: 'Farm Expenses · फार्म खर्च',
-                subtitle:
-                    'Track labour, feed operations, utilities, and other costs',
-                actions: [
-                  FilledButton.icon(
-                    onPressed: () => _expenseForm(reload),
-                    icon: const Icon(Icons.add),
-                    label: const Text('Add Farm Expense'),
+          final header = <Widget>[
+            PageHeader(
+              title: 'Farm Expenses · फार्म खर्च',
+              subtitle:
+                  'Track labour, feed operations, utilities, and other costs',
+              actions: [
+                FilledButton.icon(
+                  onPressed: () => _expenseForm(reload),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add Farm Expense'),
+                ),
+              ],
+            ),
+            LayoutBuilder(builder: (context, constraints) {
+              final columns = constraints.maxWidth >= 760 ? 3 : 1;
+              final width = columns == 1
+                  ? constraints.maxWidth
+                  : (constraints.maxWidth - 24) / 3;
+              return Wrap(spacing: 12, runSpacing: 12, children: [
+                SizedBox(
+                  width: width,
+                  child: StatCard(
+                    icon: Icons.account_balance_wallet_outlined,
+                    label: 'Total Farm Expenses (This Month)',
+                    value: money(summary['month_total']),
+                    color: AppColors.danger,
                   ),
+                ),
+                SizedBox(
+                  width: width,
+                  child: StatCard(
+                    icon: Icons.groups_outlined,
+                    label: 'Labour & Unloading Wages',
+                    value: money(summary['labour_total']),
+                    color: AppColors.yolk,
+                  ),
+                ),
+                SizedBox(
+                  width: width,
+                  child: StatCard(
+                    icon: Icons.factory_outlined,
+                    label: 'Feed Mill & Other Operations',
+                    value: money(summary['operations_total']),
+                    color: AppColors.info,
+                  ),
+                ),
+              ]);
+            }),
+            const SizedBox(height: 16),
+            AppCard(
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  IconButton(
+                    tooltip: 'Previous month',
+                    onPressed: () => _shiftMonth(-1),
+                    icon: const Icon(Icons.chevron_left),
+                  ),
+                  Text(
+                    '${_month.year}-${_month.month.toString().padLeft(2, '0')}',
+                    style: theme.textTheme.titleSmall,
+                  ),
+                  IconButton(
+                    tooltip: 'Next month',
+                    onPressed: () => _shiftMonth(1),
+                    icon: const Icon(Icons.chevron_right),
+                  ),
+                  const SizedBox(width: 8),
+                  for (final item in _expenseFilters)
+                    ChoiceChip(
+                      label: Text(item.value),
+                      selected: _category == item.key,
+                      onSelected: (_) => setState(() => _category = item.key),
+                    ),
                 ],
               ),
-              LayoutBuilder(builder: (context, constraints) {
-                final columns = constraints.maxWidth >= 760 ? 3 : 1;
-                final width = columns == 1
-                    ? constraints.maxWidth
-                    : (constraints.maxWidth - 24) / 3;
-                return Wrap(spacing: 12, runSpacing: 12, children: [
-                  SizedBox(
-                    width: width,
-                    child: StatCard(
-                      icon: Icons.account_balance_wallet_outlined,
-                      label: 'Total Farm Expenses (This Month)',
-                      value: money(summary['month_total']),
-                      color: AppColors.danger,
-                    ),
-                  ),
-                  SizedBox(
-                    width: width,
-                    child: StatCard(
-                      icon: Icons.groups_outlined,
-                      label: 'Labour & Unloading Wages',
-                      value: money(summary['labour_total']),
-                      color: AppColors.yolk,
-                    ),
-                  ),
-                  SizedBox(
-                    width: width,
-                    child: StatCard(
-                      icon: Icons.factory_outlined,
-                      label: 'Feed Mill & Other Operations',
-                      value: money(summary['operations_total']),
-                      color: AppColors.info,
-                    ),
-                  ),
-                ]);
-              }),
-              const SizedBox(height: 16),
-              AppCard(
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    IconButton(
-                      tooltip: 'Previous month',
-                      onPressed: () => _shiftMonth(-1),
-                      icon: const Icon(Icons.chevron_left),
-                    ),
-                    Text(
-                      '${_month.year}-${_month.month.toString().padLeft(2, '0')}',
-                      style: theme.textTheme.titleSmall,
-                    ),
-                    IconButton(
-                      tooltip: 'Next month',
-                      onPressed: () => _shiftMonth(1),
-                      icon: const Icon(Icons.chevron_right),
-                    ),
-                    const SizedBox(width: 8),
-                    for (final item in _expenseFilters)
-                      ChoiceChip(
-                        label: Text(item.value),
-                        selected: _category == item.key,
-                        onSelected: (_) => setState(() => _category = item.key),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 14),
-              if (expenses.isEmpty)
-                const EmptyState(
+            ),
+            const SizedBox(height: 14),
+          ];
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: header.length + (expenses.isEmpty ? 1 : expenses.length),
+            itemBuilder: (context, index) {
+              if (index < header.length) return header[index];
+              if (expenses.isEmpty) {
+                return const EmptyState(
                   icon: Icons.receipt_long_outlined,
                   text: 'No farm expenses for this month and category.',
+                );
+              }
+              final expense = expenses[index - header.length];
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _ExpenseTile(
+                  expense: expense,
+                  onEdit: () => _expenseForm(reload, expense: expense),
+                  onDelete: () => _delete(expense, reload),
                 ),
-              for (final expense in expenses)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _ExpenseTile(
-                    expense: expense,
-                    onEdit: () => _expenseForm(reload, expense: expense),
-                    onDelete: () => _delete(expense, reload),
-                  ),
-                ),
-            ],
+              );
+            },
           );
         },
       );

@@ -2,8 +2,10 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/api_client.dart';
+import '../core/auth_state.dart';
 import '../core/config.dart';
 
 double asD(dynamic v) =>
@@ -27,6 +29,7 @@ String? decimalValueError(String? value,
 
 final NumberFormat _nf = NumberFormat.decimalPattern('en_IN')
   ..maximumFractionDigits = 2;
+final DateFormat _displayDateFormat = DateFormat('dd MMM yyyy');
 String qty(dynamic v) => _nf.format(asD(v));
 String money(dynamic v) => NumberFormat.currency(
         locale: 'en_IN', symbol: kCurrencySymbol, decimalDigits: 2)
@@ -34,7 +37,7 @@ String money(dynamic v) => NumberFormat.currency(
 String today() => DateFormat('yyyy-MM-dd').format(DateTime.now());
 String fmtDate(dynamic s) {
   try {
-    return DateFormat('dd MMM yyyy').format(DateTime.parse('$s'));
+    return _displayDateFormat.format(DateTime.parse('$s'));
   } catch (_) {
     return '$s';
   }
@@ -173,6 +176,108 @@ class StatCard extends StatelessWidget {
                   ?.copyWith(color: c, fontWeight: FontWeight.w600)),
         ],
       ]),
+    );
+  }
+}
+
+class CentralInventoryBadge extends StatelessWidget {
+  const CentralInventoryBadge({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled =
+        context.select<AuthState, bool>((auth) => auth.sharedInventoryEnabled);
+    if (!enabled) return const SizedBox.shrink();
+    final colors = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: colors.primaryContainer.withValues(alpha: .55),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: colors.primary.withValues(alpha: .2)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.warehouse_outlined, size: 17, color: colors.primary),
+              const SizedBox(width: 7),
+              Flexible(
+                child: Text(
+                  'Central Godown Stock • Shared across all sheds',
+                  style: Theme.of(context)
+                      .textTheme
+                      .labelMedium
+                      ?.copyWith(color: colors.primary),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class CentralInventoryToggle extends StatefulWidget {
+  const CentralInventoryToggle({super.key});
+
+  @override
+  State<CentralInventoryToggle> createState() => _CentralInventoryToggleState();
+}
+
+class _CentralInventoryToggleState extends State<CentralInventoryToggle> {
+  bool _saving = false;
+
+  Future<void> _setEnabled(bool enabled) async {
+    setState(() => _saving = true);
+    try {
+      await context.read<AuthState>().setSharedInventoryEnabled(enabled);
+      if (mounted) {
+        toast(
+          context,
+          enabled
+              ? 'Central Godown Stock enabled'
+              : 'Central Godown Stock disabled',
+        );
+      }
+    } catch (error) {
+      if (mounted) toast(context, '$error', error: true);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasMultipleFarms =
+        context.select<AuthState, bool>((auth) => auth.farms.length >= 2);
+    final enabled =
+        context.select<AuthState, bool>((auth) => auth.sharedInventoryEnabled);
+    if (!hasMultipleFarms) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: AppCard(
+        child: SwitchListTile.adaptive(
+          contentPadding: EdgeInsets.zero,
+          value: enabled,
+          onChanged: _saving ? null : _setEnabled,
+          activeThumbColor: Colors.white,
+          activeTrackColor: const Color(0xFF008577),
+          inactiveThumbColor: const Color(0xFF455A64),
+          inactiveTrackColor: const Color(0xFFCFD8DC),
+          title: const Text(
+            'Central Godown Stock',
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
+          subtitle: const Text(
+            'Share Raw Material & Medicines across all units',
+          ),
+        ),
+      ),
     );
   }
 }
@@ -427,12 +532,15 @@ class _DataLoaderState<T> extends State<DataLoader<T>> {
   T? _data;
   Object? _error;
   bool _loading = true;
+  bool _cacheReloadScheduled = false;
   int _requestId = 0;
 
   @override
   void initState() {
     super.initState();
     ApiClient.instance.mutationVersion.addListener(_onMutation);
+    ApiClient.instance.farmVersion.addListener(_onFarmChanged);
+    ApiClient.instance.cacheVersion.addListener(_onCacheUpdated);
     if (widget.cacheKey != null) _restoreCache();
     _reload();
   }
@@ -440,10 +548,29 @@ class _DataLoaderState<T> extends State<DataLoader<T>> {
   @override
   void dispose() {
     ApiClient.instance.mutationVersion.removeListener(_onMutation);
+    ApiClient.instance.farmVersion.removeListener(_onFarmChanged);
+    ApiClient.instance.cacheVersion.removeListener(_onCacheUpdated);
     super.dispose();
   }
 
   void _onMutation() => _reload();
+
+  void _onCacheUpdated() {
+    if (!mounted || _data == null || _cacheReloadScheduled) return;
+    _cacheReloadScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _cacheReloadScheduled = false;
+      if (mounted) _reload();
+    });
+    WidgetsBinding.instance.scheduleFrame();
+  }
+
+  void _onFarmChanged() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _reload();
+    });
+    WidgetsBinding.instance.scheduleFrame();
+  }
 
   Future<void> _reload() async {
     final requestId = ++_requestId;
@@ -474,6 +601,11 @@ class _DataLoaderState<T> extends State<DataLoader<T>> {
     }
   }
 
+  void _forceReload() {
+    ApiClient.instance.invalidateCache();
+    _reload();
+  }
+
   Future<void> _restoreCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -492,7 +624,7 @@ class _DataLoaderState<T> extends State<DataLoader<T>> {
 
   @override
   Widget build(BuildContext context) {
-    if (_data != null) return widget.builder(context, _data as T, _reload);
+    if (_data != null) return widget.builder(context, _data as T, _forceReload);
     if (_loading) return const Center(child: CircularProgressIndicator());
     return Center(
       child: Column(mainAxisSize: MainAxisSize.min, children: [

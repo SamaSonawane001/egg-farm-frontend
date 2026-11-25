@@ -21,10 +21,11 @@ import 'screens/signup_screen.dart';
 import 'widgets/app_shell.dart';
 
 GoRouter buildRouter(AuthState auth) {
-  Page<void> page(Widget w) => NoTransitionPage<void>(child: w);
+  Page<void> page(GoRouterState state, Widget child) =>
+      NoTransitionPage<void>(key: state.pageKey, child: child);
   return GoRouter(
     initialLocation: '/boot',
-    refreshListenable: auth,
+    refreshListenable: auth.routeRefreshListenable,
     redirect: (context, state) {
       final onBootPage = state.matchedLocation == '/boot';
       final onAuthPage = state.matchedLocation == '/login' ||
@@ -38,80 +39,104 @@ GoRouter buildRouter(AuthState auth) {
     routes: [
       GoRoute(
         path: '/boot',
-        builder: (_, __) =>
-            const Scaffold(body: Center(child: CircularProgressIndicator())),
+        pageBuilder: (_, state) => page(
+          state,
+          const Scaffold(body: Center(child: CircularProgressIndicator())),
+        ),
       ),
-      GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
-      GoRoute(path: '/signup', builder: (_, __) => const SignupScreen()),
+      GoRoute(
+        path: '/login',
+        pageBuilder: (_, state) => page(state, const LoginScreen()),
+      ),
+      GoRoute(
+        path: '/signup',
+        pageBuilder: (_, state) => page(state, const SignupScreen()),
+      ),
       ShellRoute(
         builder: (context, state, child) =>
             AppShell(location: state.matchedLocation, child: child),
         routes: [
           GoRoute(
               path: '/dashboard',
-              pageBuilder: (_, __) => page(const DashboardScreen())),
+              pageBuilder: (_, state) => page(state, const DashboardScreen())),
           GoRoute(
             path: '/expenses/monthly',
-            pageBuilder: (_, state) => page(MonthlyExpenseDetailScreen(
-              month: int.tryParse(state.uri.queryParameters['month'] ?? '') ??
-                  DateTime.now().month,
-              year: int.tryParse(state.uri.queryParameters['year'] ?? '') ??
-                  DateTime.now().year,
-            )),
+            pageBuilder: (_, state) => page(
+                state,
+                MonthlyExpenseDetailScreen(
+                  month:
+                      int.tryParse(state.uri.queryParameters['month'] ?? '') ??
+                          DateTime.now().month,
+                  year: int.tryParse(state.uri.queryParameters['year'] ?? '') ??
+                      DateTime.now().year,
+                )),
           ),
           GoRoute(
               path: '/flock',
-              pageBuilder: (_, __) => page(const FlockScreen())),
+              pageBuilder: (_, state) => page(state, const FlockScreen())),
           GoRoute(
               path: '/feed',
-              pageBuilder: (_, __) => page(const FeedInventoryScreen())),
+              pageBuilder: (_, state) =>
+                  page(state, const FeedInventoryScreen())),
           GoRoute(
               path: '/raw-materials',
-              pageBuilder: (_, __) => page(const RawMaterialsScreen())),
+              pageBuilder: (_, state) =>
+                  page(state, const RawMaterialsScreen())),
           GoRoute(
             path: '/raw-materials/:materialId',
-            pageBuilder: (_, state) => page(RawMaterialDetailScreen(
-              materialId: state.pathParameters['materialId']!,
-              materialName: (state.extra as Map<String, String>?)?['name'],
-              unit: (state.extra as Map<String, String>?)?['unit'],
-            )),
+            pageBuilder: (_, state) => page(
+                state,
+                RawMaterialDetailScreen(
+                  materialId: state.pathParameters['materialId']!,
+                  materialName: (state.extra as Map<String, String>?)?['name'],
+                  unit: (state.extra as Map<String, String>?)?['unit'],
+                )),
           ),
           GoRoute(
               path: '/medicines',
-              pageBuilder: (_, __) => page(const MedicinesScreen())),
+              pageBuilder: (_, state) => page(state, const MedicinesScreen())),
           GoRoute(
               path: '/farm-expenses',
-              pageBuilder: (_, __) => page(const FarmExpensesScreen())),
+              pageBuilder: (_, state) =>
+                  page(state, const FarmExpensesScreen())),
           GoRoute(
             path: '/medicines/:medicineId',
-            pageBuilder: (_, state) => page(MedicineDetailScreen(
-              medicineId: state.pathParameters['medicineId']!,
-              medicineName: (state.extra as Map<String, String>?)?['name'],
-              unit: (state.extra as Map<String, String>?)?['unit'],
-            )),
+            pageBuilder: (_, state) => page(
+                state,
+                MedicineDetailScreen(
+                  medicineId: state.pathParameters['medicineId']!,
+                  medicineName: (state.extra as Map<String, String>?)?['name'],
+                  unit: (state.extra as Map<String, String>?)?['unit'],
+                )),
           ),
           GoRoute(
               path: '/feed/ready',
-              pageBuilder: (_, __) => page(const ReadyFeedDetailScreen())),
+              pageBuilder: (_, state) =>
+                  page(state, const ReadyFeedDetailScreen())),
           GoRoute(
             path: '/feed/:productId',
-            pageBuilder: (_, state) => page(FeedProductDetailScreen(
-                productId: state.pathParameters['productId']!)),
+            pageBuilder: (_, state) => page(
+                state,
+                FeedProductDetailScreen(
+                    productId: state.pathParameters['productId']!)),
           ),
           GoRoute(
-              path: '/eggs', pageBuilder: (_, __) => page(const EggsScreen())),
+              path: '/eggs',
+              pageBuilder: (_, state) => page(state, const EggsScreen())),
           GoRoute(
               path: '/invoices',
-              pageBuilder: (_, __) => page(const InvoicesScreen())),
+              pageBuilder: (_, state) => page(state, const InvoicesScreen())),
           GoRoute(
             path: '/customers/:customerId',
-            pageBuilder: (_, state) => page(CustomerLedgerScreen(
-              customerId: state.pathParameters['customerId']!,
-            )),
+            pageBuilder: (_, state) => page(
+                state,
+                CustomerLedgerScreen(
+                  customerId: state.pathParameters['customerId']!,
+                )),
           ),
           GoRoute(
               path: '/profile',
-              pageBuilder: (_, __) => page(const ProfileScreen())),
+              pageBuilder: (_, state) => page(state, const ProfileScreen())),
         ],
       ),
     ],

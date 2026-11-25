@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import '../core/api_client.dart';
 import '../core/auth_state.dart';
 import 'common.dart';
 
@@ -71,14 +72,25 @@ class AppShell extends StatelessWidget {
               VerticalDivider(width: 1, color: cs.outline),
             ],
             Expanded(
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: SafeArea(
-                  top: false,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 1200),
-                    child: child,
-                  ),
+              child: SafeArea(
+                top: false,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final contentWidth = constraints.maxWidth > 1200
+                        ? 1200.0
+                        : constraints.maxWidth;
+                    return Align(
+                      alignment: Alignment.topCenter,
+                      child: SizedBox(
+                        width: contentWidth,
+                        height: constraints.maxHeight,
+                        child: _FarmKeyedContent(
+                          location: location,
+                          child: child,
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
@@ -153,12 +165,58 @@ class AppShell extends StatelessWidget {
   }
 }
 
+class _FarmKeyedContent extends StatefulWidget {
+  final Widget child;
+  final String location;
+
+  const _FarmKeyedContent({
+    required this.child,
+    required this.location,
+  });
+
+  @override
+  State<_FarmKeyedContent> createState() => _FarmKeyedContentState();
+}
+
+class _FarmKeyedContentState extends State<_FarmKeyedContent> {
+  String? _lastFarmId;
+  bool _hasFarmSelection = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final activeFarmId =
+        context.select<AuthState, String?>((auth) => auth.selectedFarmId);
+    final farmChanged = _hasFarmSelection && _lastFarmId != activeFarmId;
+    _hasFarmSelection = true;
+    _lastFarmId = activeFarmId;
+    final detailRoot = widget.location.startsWith('/raw-materials/')
+        ? '/raw-materials'
+        : widget.location.startsWith('/medicines/')
+            ? '/medicines'
+            : null;
+    if (farmChanged && detailRoot != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && widget.location.startsWith('$detailRoot/')) {
+          context.go(detailRoot);
+        }
+      });
+      return const Center(child: CircularProgressIndicator());
+    }
+    return KeyedSubtree(
+      key: ValueKey<String?>(activeFarmId),
+      child: widget.child,
+    );
+  }
+}
+
 /// Fixed profile bar shown on every authenticated page.
 class _TopBar extends StatelessWidget {
   const _TopBar();
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthState>();
+    ApiClient.instance.onFarmRequired =
+        () => _showFarmChooser(context, auth, requireSpecificFarm: true);
     final t = Theme.of(context);
     return Material(
       color: t.colorScheme.surface,
@@ -185,33 +243,159 @@ class _TopBar extends StatelessWidget {
                               ?.copyWith(color: t.hintColor),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis),
+                      if (auth.isSecondaryFarm || auth.isAllFarms)
+                        Text(
+                          auth.isAllFarms
+                              ? auth.selectedFarmName
+                              : 'Unit: ${auth.selectedFarmName}',
+                          style: t.textTheme.labelSmall
+                              ?.copyWith(color: t.colorScheme.primary),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                     ]),
               ),
               IconButton.outlined(
-                tooltip: 'Logout',
-                icon: const Icon(Icons.logout, size: 20),
-                onPressed: () async {
-                  final ok = await showDialog<bool>(
-                    context: context,
-                    builder: (c) => AlertDialog(
-                      title: const Text('Logout?'),
-                      actions: [
-                        TextButton(
-                            onPressed: () => Navigator.pop(c, false),
-                            child: const Text('Cancel')),
-                        FilledButton(
-                            onPressed: () => Navigator.pop(c, true),
-                            child: const Text('Logout')),
-                      ],
-                    ),
-                  );
-                  if (ok == true) auth.logout();
-                },
+                tooltip: 'Switch farm',
+                icon: const Icon(Icons.swap_horiz),
+                onPressed: () =>
+                    _showFarmChooser(context, auth, requireSpecificFarm: false),
               ),
             ]),
           ),
         ),
       ),
     );
+  }
+}
+
+Future<bool> _showFarmChooser(
+  BuildContext context,
+  AuthState auth, {
+  required bool requireSpecificFarm,
+}) async {
+  Future<void>? farmSelection;
+  final selection = await showModalBottomSheet<String>(
+    context: context,
+    showDragHandle: true,
+    builder: (sheetContext) => SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          const ListTile(
+            title: Text('Choose farm'),
+            subtitle: Text('Operations and records stay separate per farm.'),
+          ),
+          for (final farm in auth.farms)
+            ListTile(
+              leading: Icon(
+                auth.selectedFarmId == farm['farm_id']
+                    ? Icons.radio_button_checked
+                    : Icons.radio_button_off,
+              ),
+              title: Text('${farm['farm_name'] ?? 'Farm'}'),
+              subtitle: farm['is_primary'] == true
+                  ? const Text('Primary farm')
+                  : null,
+              onTap: () {
+                final farmId = '${farm['farm_id']}';
+                farmSelection = auth.selectFarm(farmId);
+                Navigator.pop(sheetContext, farmId);
+              },
+            ),
+          if (!requireSpecificFarm)
+            ListTile(
+              leading: Icon(
+                auth.isAllFarms
+                    ? Icons.radio_button_checked
+                    : Icons.assessment_outlined,
+              ),
+              title: const Text('All Farms Combined · एकत्रित हिशोब'),
+              onTap: () {
+                farmSelection = auth.selectFarm('all');
+                Navigator.pop(sheetContext, 'all');
+              },
+            ),
+          if (!requireSpecificFarm)
+            ListTile(
+              leading: const Icon(Icons.add_business_outlined),
+              title: const Text('Create a farm'),
+              onTap: () => Navigator.pop(sheetContext, '__create_farm__'),
+            ),
+        ],
+      ),
+    ),
+  );
+  if (!context.mounted) return false;
+  if (selection == null) return false;
+  if (selection == '__create_farm__') {
+    await _showCreateFarmDialog(context, auth);
+    return false;
+  }
+  try {
+    await (farmSelection ?? auth.selectFarm(selection));
+    return true;
+  } catch (error) {
+    if (context.mounted) toast(context, '$error', error: true);
+    return false;
+  }
+}
+
+Future<void> _showCreateFarmDialog(BuildContext context, AuthState auth) async {
+  final nameController = TextEditingController();
+  var copyBranding = true;
+  final create = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (dialogContext, setState) => AlertDialog(
+        title: const Text('Create a farm'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Farm name'),
+              textCapitalization: TextCapitalization.words,
+            ),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              value: copyBranding,
+              title: const Text('Copy logo, signature and payment QR'),
+              onChanged: (value) =>
+                  setState(() => copyBranding = value ?? false),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (nameController.text.trim().isEmpty) return;
+              Navigator.pop(dialogContext, true);
+            },
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    ),
+  );
+  if (create != true) {
+    nameController.dispose();
+    return;
+  }
+  try {
+    await auth.createFarm(
+      nameController.text.trim(),
+      copyBranding: copyBranding,
+    );
+    if (context.mounted) toast(context, 'Farm created');
+  } catch (error) {
+    if (context.mounted) toast(context, '$error', error: true);
+  } finally {
+    nameController.dispose();
   }
 }

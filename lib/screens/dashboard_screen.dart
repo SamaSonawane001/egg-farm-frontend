@@ -12,9 +12,16 @@ class DashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthState>();
+    final ownerId = context
+        .select<AuthState, String?>((auth) => auth.user?['id']?.toString());
+    final ownerName =
+        context.select<AuthState, String>((auth) => auth.ownerName);
+    final isAllFarms =
+        context.select<AuthState, bool>((auth) => auth.isAllFarms);
+    final activeFarmId =
+        context.select<AuthState, String?>((auth) => auth.selectedFarmId);
     return DataLoader<Map<String, dynamic>>(
-      cacheKey: 'dashboard:${auth.user?['id'] ?? 'current'}',
+      cacheKey: 'dashboard:${ownerId ?? 'current'}:$activeFarmId',
       load: () async => Map<String, dynamic>.from(await ApiClient.instance
           .get('/dashboard', query: {'today': today()})),
       builder: (context, d, reload) {
@@ -35,12 +42,14 @@ class DashboardScreen extends StatelessWidget {
               label: 'Available eggs',
               value: qty(d['available_eggs']),
               color: AppColors.info),
-          StatCard(
-              icon: Icons.grass,
-              label: 'Remaining feed bags',
-              value: qty(d['feed_remaining_bags']),
-              sub: low ? 'Low stock!' : null,
-              color: low ? AppColors.danger : AppColors.info),
+          _FeedStockCard(
+            totalBags: d['feed_remaining_bags'],
+            lowStock: low,
+            allFarms: isAllFarms,
+            breakdown: Map<String, dynamic>.from(
+              d['stock_breakdown'] as Map? ?? const {},
+            ),
+          ),
           StatCard(
               icon: Icons.trending_up,
               label: 'Monthly revenue (invoices)',
@@ -88,7 +97,7 @@ class DashboardScreen extends StatelessWidget {
             children: [
               PageHeader(
                 title: 'Executive Dashboard',
-                subtitle: 'Welcome back, ${auth.ownerName}',
+                subtitle: 'Welcome back, $ownerName',
                 actions: [
                   IconButton.outlined(
                       onPressed: reload, icon: const Icon(Icons.refresh))
@@ -121,6 +130,16 @@ class DashboardScreen extends StatelessWidget {
                   for (final x in cards) SizedBox(width: w, child: x)
                 ]);
               }),
+              if (isAllFarms) ...[
+                const SizedBox(height: 16),
+                _FarmBreakdown(
+                  farms: List<Map<String, dynamic>>.from(
+                    (d['farm_breakdown'] as List? ?? const []).map(
+                      (farm) => Map<String, dynamic>.from(farm as Map),
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 16),
               _WeekChart(
                   days:
@@ -133,12 +152,242 @@ class DashboardScreen extends StatelessWidget {
   }
 }
 
+class _FeedStockCard extends StatelessWidget {
+  final dynamic totalBags;
+  final bool lowStock;
+  final bool allFarms;
+  final Map<String, dynamic> breakdown;
+
+  const _FeedStockCard({
+    required this.totalBags,
+    required this.lowStock,
+    required this.allFarms,
+    required this.breakdown,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final feeds = List<Map<String, dynamic>>.from(
+      (breakdown['feed_products'] as List? ?? const [])
+          .map((item) => Map<String, dynamic>.from(item as Map)),
+    );
+    final materials = List<Map<String, dynamic>>.from(
+      (breakdown['raw_materials'] as List? ?? const [])
+          .map((item) => Map<String, dynamic>.from(item as Map)),
+    );
+    final otherFeeds = feeds
+        .where((feed) =>
+            '${feed['feed_type']}'.trim().toLowerCase() != 'ready feed')
+        .toList();
+
+    return AppCard(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.info.withValues(alpha: .12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.grass, size: 20, color: AppColors.info),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Remaining feed bags',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.hintColor),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(qty(totalBags), style: theme.textTheme.headlineSmall),
+          ),
+          if (lowStock) ...[
+            const SizedBox(height: 3),
+            const Text(
+              'Low stock!',
+              style: TextStyle(
+                  color: AppColors.danger, fontWeight: FontWeight.w600),
+            ),
+          ],
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            childrenPadding: EdgeInsets.zero,
+            visualDensity: VisualDensity.compact,
+            title: const Text(
+              'Stock details • साठा तपशील',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+            children: [
+              _StockGroup(
+                title: 'Ready Feed • तयार फीड',
+                items: [
+                  {
+                    'name': 'Ready Feed',
+                    'quantity': breakdown['ready_feed_bags'] ?? 0,
+                    'unit': 'bags',
+                  }
+                ],
+              ),
+              if (otherFeeds.isNotEmpty)
+                _StockGroup(
+                  title: 'Other Feed • इतर फीड',
+                  items: otherFeeds
+                      .map((feed) => {
+                            'name':
+                                '${feed['feed_type'] ?? 'Feed'}${allFarms ? ' • ${feed['farm_name'] ?? ''}' : ''}',
+                            'quantity': feed['remaining'] ?? 0,
+                            'unit': 'bags',
+                          })
+                      .toList(),
+                ),
+              if (materials.isNotEmpty)
+                _StockGroup(
+                  title: 'Raw Materials • कच्चा माल',
+                  items: materials
+                      .map((material) => {
+                            'name':
+                                '${material['name'] ?? 'Material'}${material['is_shared_pool'] == true ? ' • Central Godown' : allFarms ? ' • ${material['farm_name'] ?? ''}' : ''}',
+                            'quantity': material['bags_equivalent'] ?? 0,
+                            'unit': 'bags',
+                            'detail':
+                                '${qty(material['current_stock'])} ${material['unit'] ?? 'kg'}'
+                          })
+                      .toList(),
+                ),
+              if (otherFeeds.isEmpty && materials.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 8),
+                  child: Text('No additional stock items.'),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StockGroup extends StatelessWidget {
+  final String title;
+  final List<Map<String, dynamic>> items;
+
+  const _StockGroup({required this.title, required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title,
+              style: theme.textTheme.labelLarge
+                  ?.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          for (final item in items)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${item['name']}', softWrap: true),
+                        if (item['detail'] != null)
+                          Text('${item['detail']}',
+                              style: theme.textTheme.bodySmall
+                                  ?.copyWith(color: theme.hintColor)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      '${qty(item['quantity'])} ${item['unit']}',
+                      textAlign: TextAlign.end,
+                      softWrap: true,
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FarmBreakdown extends StatelessWidget {
+  final List<Map<String, dynamic>> farms;
+  const _FarmBreakdown({required this.farms});
+
+  @override
+  Widget build(BuildContext context) => AppCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Farm-Wise Breakdown · फार्मनुसार हिशोब',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 10),
+            if (farms.isEmpty)
+              const Text('No farm activity found for this period.')
+            else
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: DataTable(
+                  columns: const [
+                    DataColumn(label: Text('Farm')),
+                    DataColumn(label: Text('Active birds')),
+                    DataColumn(label: Text("Today's eggs")),
+                    DataColumn(label: Text('Revenue')),
+                    DataColumn(label: Text('Expenses')),
+                    DataColumn(label: Text('Net')),
+                  ],
+                  rows: [
+                    for (final farm in farms)
+                      DataRow(cells: [
+                        DataCell(Text('${farm['farm_name'] ?? ''}')),
+                        DataCell(Text(qty(farm['active_birds']))),
+                        DataCell(Text(qty(farm['today_eggs']))),
+                        DataCell(Text(money(farm['month_revenue']))),
+                        DataCell(Text(money(farm['month_expense']))),
+                        DataCell(Text(money(farm['month_profit']))),
+                      ]),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      );
+}
+
 class _WeekChart extends StatelessWidget {
   final List<Map<String, dynamic>> days;
   const _WeekChart({required this.days});
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
+    final weekdayFormat = DateFormat('E');
     final maxV = days.fold<double>(
         1, (m, e) => asD(e['net_eggs']) > m ? asD(e['net_eggs']) : m);
     return AppCard(
@@ -167,7 +416,7 @@ class _WeekChart extends StatelessWidget {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                            DateFormat('E')
+                            weekdayFormat
                                 .format(DateTime.parse('${e['date']}')),
                             style: t.textTheme.labelSmall),
                       ]),
