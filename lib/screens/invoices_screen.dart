@@ -14,6 +14,7 @@ import '../core/invoice_pdf_file.dart';
 import '../core/theme.dart';
 import 'customer_ledger_screen.dart';
 import '../widgets/common.dart';
+import '../widgets/subscription_widgets.dart';
 
 const kInvoiceTypes = {
   'egg_sale': 'Egg Sale • अंडी विक्री',
@@ -701,7 +702,7 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
     if (!_form.currentState!.validate()) return;
     setState(() => _saving = true);
     try {
-      final res = await ApiClient.instance.post('/invoices', {
+      final request = {
         'invoice_type': _type,
         'customer_name': _name.text.trim(),
         'customer_mobile': _mobile.text.trim(),
@@ -722,7 +723,25 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
               'sale_unit': _type == 'poultry_manure_sale' ? i.saleUnit : null,
             }
         ],
-      });
+      };
+      dynamic res;
+      try {
+        res = await ApiClient.instance.post('/invoices', request);
+      } on ApiException catch (error) {
+        if (error.code != 'SUBSCRIPTION_REQUIRED' &&
+            error.code != 'PAYMENT_PENDING') {
+          rethrow;
+        }
+        if (!mounted) return;
+        if (mounted) setState(() => _saving = false);
+        final activated = await showSubscriptionPaywall(
+          context,
+          paymentPending: error.code == 'PAYMENT_PENDING',
+        );
+        if (!activated || !mounted) return;
+        setState(() => _saving = true);
+        res = await ApiClient.instance.post('/invoices', request);
+      }
       if (mounted) Navigator.pop(context, Map<String, dynamic>.from(res));
     } catch (e) {
       if (mounted) {

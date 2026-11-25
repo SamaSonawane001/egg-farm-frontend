@@ -112,6 +112,10 @@ const _englishSections = <(String, String)>[
         '4. Subscription & availability: The software is provided as-is, with reasonable efforts toward availability and support. Temporary interruptions or data connectivity issues may occur.',
   ),
   (
+    'Subscription & cancellation policy',
+    'Annual Pro costs ₹899 for 365 days and includes unlimited invoices and multi-farm access. Payment must be confirmed by Razorpay before paid access is activated. You may cancel at any time from Farm Profile. After cancellation, access continues through the stated expiry date and the subscription will not renew. No partial or full refund is issued for the remaining active period. Payment attempts awaiting bank/UPI confirmation do not unlock invoice creation.',
+  ),
+  (
     'Privacy Policy — data collected and purpose',
     'We use owner name, farm/unit details, mobile number, farm operational and invoice records, customer/contact and payment records entered by you, and business profile assets you upload. This information is used to provide multi-farm management, record keeping, PDF invoicing, and OTP authentication. Please do not enter information that is not needed for these purposes.',
   ),
@@ -143,6 +147,10 @@ const _marathiSections = <(String, String)>[
         '२. ॲपचा उद्देश व आपली जबाबदारी: Egg Farm Manager हे डिजिटल नोंदवही व बिलिंग साधन आहे. स्टॉक, मृत्यूची नोंद, खाद्य, औषधांचे डोस, GST/कराची आकडेवारी तपासणे आणि महत्त्वाच्या व्यावसायिक नोंदींचा बॅकअप ठेवणे ही आपली जबाबदारी आहे.\n\n'
         '३. खाते सुरक्षा: आपला पासवर्ड आणि OTP गोपनीय ठेवा. ग्राहकांचे फोन नंबर गैरवापरासाठी वापरू नका किंवा स्पॅम बिले पाठवू नका.\n\n'
         '४. सदस्यता व सेवा उपलब्धता: सॉफ्टवेअर जसे आहे तसे दिले जाते. सेवा उपलब्धता व मदतीसाठी वाजवी प्रयत्न केले जातील; तात्पुरते व्यत्यय किंवा इंटरनेट समस्यांमुळे सेवा प्रभावित होऊ शकते.',
+  ),
+  (
+    'सदस्यता व रद्द करण्याचे धोरण',
+    'Annual Pro योजनेची किंमत ₹899 असून ती 365 दिवसांसाठी वैध आहे. या योजनेत अमर्यादित बिले आणि अनेक फार्म/युनिटचा वापर समाविष्ट आहे. Razorpay कडून पेमेंटची पुष्टी झाल्यानंतरच सशुल्क प्रवेश सुरू होईल. Farm Profile मधून कधीही सदस्यता रद्द करता येईल. रद्द केल्यानंतरही दाखवलेल्या समाप्ती तारखेपर्यंत प्रवेश सुरू राहील आणि सदस्यता आपोआप नूतनीकरण होणार नाही. उर्वरित सक्रिय कालावधीसाठी अंशतः किंवा पूर्ण परतावा दिला जाणार नाही. बँक/UPI पुष्टीची प्रतीक्षा असलेले पेमेंट बिल तयार करण्याचा प्रवेश देत नाही.',
   ),
   (
     'गोपनीयता धोरण — गोळा केलेली माहिती व उद्देश',

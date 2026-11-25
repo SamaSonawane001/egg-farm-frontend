@@ -3,9 +3,11 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import '../core/api_client.dart';
 import '../core/auth_state.dart';
 import '../widgets/common.dart';
 import '../widgets/legal_documents.dart';
+import '../widgets/subscription_widgets.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -513,6 +515,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _farmUnitsCard(auth),
             const SizedBox(height: 14),
             const CentralInventoryToggle(),
+            const SizedBox(height: 14),
+            DataLoader<Map<String, dynamic>>(
+              load: () async => Map<String, dynamic>.from(
+                await ApiClient.instance.get('/subscription/status') as Map,
+              ),
+              builder: (context, status, reload) =>
+                  SubscriptionManagementCard(status: status, reload: reload),
+            ),
             const SizedBox(height: 14),
             _farmAssetCard(
               asset: 'signature',
