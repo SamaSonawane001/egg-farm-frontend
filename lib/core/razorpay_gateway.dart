@@ -1,6 +1,6 @@
 import 'razorpay_checkout_result.dart';
 import 'razorpay_gateway_stub.dart'
-    if (dart.library.html) 'razorpay_gateway_web.dart'
+    if (dart.library.js_interop) 'razorpay_gateway_web.dart'
     if (dart.library.io) 'razorpay_gateway_mobile.dart' as implementation;
 
 export 'razorpay_checkout_result.dart';
