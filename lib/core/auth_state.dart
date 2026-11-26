@@ -212,13 +212,16 @@ class AuthState extends ChangeNotifier {
 
   Future<void> selectFarm(String farmId) async {
     final previous = _selectedFarmId;
-    _selectedFarmId = farmId;
-    _api.farmId = farmId == 'all' ? 'all' : farmId;
-    notifyListeners();
+    final previousToken = _token;
     SharedPreferences? prefs;
     try {
       prefs = await SharedPreferences.getInstance();
-      await prefs.setString('farmId', farmId);
+      final saved = await prefs.setString('farmId', farmId);
+      if (!saved) throw StateError('Failed to save the selected farm');
+      _selectedFarmId = farmId;
+      _api.farmId = farmId == 'all' ? 'all' : farmId;
+      _api.invalidateCache();
+      notifyListeners();
       if (farmId != 'all') {
         final selectedUser =
             Map<String, dynamic>.from(await _api.get('/auth/me'));
@@ -227,16 +230,19 @@ class AuthState extends ChangeNotifier {
         notifyListeners();
       }
     } catch (_) {
-      _selectedFarmId = previous;
-      _api.farmId = previous;
-      if (prefs != null) {
-        if (previous == null) {
-          await prefs.remove('farmId');
-        } else {
-          await prefs.setString('farmId', previous);
+      if (_token == previousToken) {
+        _selectedFarmId = previous;
+        _api.farmId = previous;
+        _api.invalidateCache();
+        if (prefs != null) {
+          if (previous == null) {
+            await prefs.remove('farmId');
+          } else {
+            await prefs.setString('farmId', previous);
+          }
         }
+        notifyListeners();
       }
-      notifyListeners();
       rethrow;
     }
   }

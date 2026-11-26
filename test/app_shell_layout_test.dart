@@ -105,6 +105,30 @@ void main() {
     expect(find.text('farm-2'), findsOneWidget);
   });
 
+  test('farm selection is saved before notifying API farm listeners', () async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    ApiClient.instance.farmId = null;
+    final auth = AuthState();
+    String? savedFarmIdAtChange;
+    void captureSavedFarmId() {
+      savedFarmIdAtChange = prefs.getString('farmId');
+    }
+
+    ApiClient.instance.farmVersion.addListener(captureSavedFarmId);
+    addTearDown(() {
+      ApiClient.instance.farmVersion.removeListener(captureSavedFarmId);
+      ApiClient.instance.farmId = null;
+      auth.dispose();
+    });
+
+    await auth.selectFarm('all');
+
+    expect(savedFarmIdAtChange, 'all');
+    expect(auth.selectedFarmId, 'all');
+    expect(ApiClient.instance.farmId, 'all');
+  });
+
   testWidgets('switching farms reloads the routed screen', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final auth = AuthState();
