@@ -19,6 +19,7 @@ class ApiException implements Exception {
 class ApiClient {
   ApiClient._();
   static final ApiClient instance = ApiClient._();
+  static const _requestTimeout = Duration(seconds: 60);
   final ValueNotifier<int> mutationVersion = ValueNotifier<int>(0);
   final ValueNotifier<int> farmVersion = ValueNotifier<int>(0);
   final ValueNotifier<int> cacheVersion = ValueNotifier<int>(0);
@@ -139,8 +140,7 @@ class ApiClient {
       _mutate(() => _client.delete(_uri(path), headers: _headers));
 
   Future<dynamic> _mutate(Future<http.Response> Function() call,
-      {String? fallbackError,
-      Duration timeout = const Duration(seconds: 10)}) async {
+      {String? fallbackError, Duration timeout = _requestTimeout}) async {
     dynamic result;
     try {
       result =
@@ -176,8 +176,7 @@ class ApiClient {
   }
 
   Future<dynamic> _send(Future<http.Response> Function() call,
-      {String? fallbackError,
-      Duration timeout = const Duration(seconds: 10)}) async {
+      {String? fallbackError, Duration timeout = _requestTimeout}) async {
     http.Response r;
     try {
       r = await call().timeout(timeout);
@@ -195,10 +194,16 @@ class ApiClient {
       }
       return body is Map && body.containsKey('data') ? body['data'] : body;
     }
-    if (r.statusCode == 401 && token != null) onUnauthorized?.call();
     final retryAfterSeconds = body is Map
         ? int.tryParse('${body['retry_after_seconds'] ?? ''}')
         : null;
+    final errorCode =
+        body is Map && body['code'] != null ? body['code'].toString() : null;
+    if (r.statusCode == 401 &&
+        token != null &&
+        (errorCode == 'AUTH_INVALID' || errorCode == 'AUTH_REQUIRED')) {
+      onUnauthorized?.call();
+    }
     throw ApiException(
         body is Map && body['message'] != null
             ? body['message'].toString()
@@ -206,7 +211,7 @@ class ApiClient {
                 ? body['error'].toString()
                 : '${fallbackError ?? 'Request failed'} (${r.statusCode})',
         r.statusCode,
-        body is Map && body['code'] != null ? body['code'].toString() : null,
+        errorCode,
         retryAfterSeconds);
   }
 }

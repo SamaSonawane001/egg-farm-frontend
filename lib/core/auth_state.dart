@@ -90,18 +90,15 @@ class AuthState extends ChangeNotifier {
             await prefs.setString('farmId', _selectedFarmId!);
           }
         } catch (error) {
-          if (error is ApiException && error.status == 401) {
+          if (error is ApiException &&
+              (error.code == 'AUTH_INVALID' || error.code == 'AUTH_REQUIRED')) {
             _token = null;
             _api.token = null;
             _api.farmId = null;
             user = null;
             await prefs.remove('token');
             await prefs.remove('user');
-          } else if (user == null) {
-            _token = null;
-            _api.token = null;
-            _api.farmId = null;
-            await prefs.remove('token');
+            await prefs.remove('farmId');
           }
         }
       }

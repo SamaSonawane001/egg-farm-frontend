@@ -58,6 +58,25 @@ void main() {
     expect(routeRefreshes, 2);
   });
 
+  test('temporary auth-restore failures do not erase the saved token',
+      () async {
+    SharedPreferences.setMockInitialValues({'token': 'saved-token'});
+    ApiClient.instance.token = null;
+    ApiClient.instance.farmId = null;
+    final auth = AuthState();
+    addTearDown(() {
+      ApiClient.instance.token = null;
+      ApiClient.instance.farmId = null;
+      auth.dispose();
+    });
+
+    await auth.init();
+
+    expect((await SharedPreferences.getInstance()).getString('token'),
+        'saved-token');
+    expect(ApiClient.instance.token, 'saved-token');
+  });
+
   testWidgets('active DataLoader reloads with the latest farm ID',
       (tester) async {
     ApiClient.instance.farmId = null;
