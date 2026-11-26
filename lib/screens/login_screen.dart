@@ -275,6 +275,8 @@ class _LoginScreenState extends State<LoginScreen> {
             TextButton(
                 onPressed: () => context.go('/signup'),
                 child: const Text("New farm? Create an account")),
+            const SizedBox(height: 4),
+            const AndroidAppDownloadButton(),
           ]),
         ),
       ),

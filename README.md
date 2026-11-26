@@ -35,3 +35,7 @@ flutter build ipa --release --dart-define=API_BASE_URL=https://egg-farm-backend.
 Android App Bundle builds require a configured Android toolchain. iOS IPA builds require macOS, Xcode, and signing configuration.
 
 For iOS receipt camera/gallery access, add `NSCameraUsageDescription` and `NSPhotoLibraryUsageDescription` to `ios/Runner/Info.plist`.
+
+## Android app downloads
+
+The `build_apk.yml` workflow publishes each successful release APK to the rolling GitHub release at `https://github.com/SamaSonawane001/egg-farm-frontend/releases/download/latest/app-release.apk`. Flutter Web exposes this download from Login and Farm Profile; the APK is hosted by GitHub and is not included in the Vercel web assets.

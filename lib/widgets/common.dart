@@ -1,12 +1,44 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../core/api_client.dart';
 import '../core/auth_state.dart';
 import '../core/config.dart';
+
+const _androidAppReleaseUrl =
+    'https://github.com/SamaSonawane001/egg-farm-frontend/releases/download/latest/app-release.apk';
+
+class AndroidAppDownloadButton extends StatelessWidget {
+  const AndroidAppDownloadButton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!kIsWeb) return const SizedBox.shrink();
+    return OutlinedButton.icon(
+      onPressed: () async {
+        final launched = await launchUrl(
+          Uri.parse(_androidAppReleaseUrl),
+          mode: LaunchMode.externalApplication,
+        );
+        if (!launched && context.mounted) {
+          toast(context, 'Could not open the Android app download.',
+              error: true);
+        }
+      },
+      icon: const Icon(Icons.android, size: 18),
+      label: const Text('Download Android App (.apk)'),
+      style: OutlinedButton.styleFrom(
+        visualDensity: VisualDensity.compact,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      ),
+    );
+  }
+}
 
 double asD(dynamic v) =>
     v is num ? v.toDouble() : (double.tryParse('${v ?? ''}') ?? 0);

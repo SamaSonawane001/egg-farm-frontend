@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
@@ -30,6 +32,14 @@ jobs:
 
       - name: Build APK
         run: flutter build apk --release
+
+      - name: Publish latest APK release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest Android App
+          files: build/app/outputs/flutter-apk/app-release.apk
+          overwrite_files: true
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
