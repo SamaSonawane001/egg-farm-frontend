@@ -99,6 +99,7 @@ class DashboardScreen extends StatelessWidget {
                 title: 'Executive Dashboard',
                 subtitle: 'Welcome back, $ownerName',
                 actions: [
+                  const AndroidAppDownloadButton(),
                   IconButton.outlined(
                       onPressed: reload, icon: const Icon(Icons.refresh))
                 ],
