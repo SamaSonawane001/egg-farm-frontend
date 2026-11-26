@@ -129,6 +129,29 @@ void main() {
     expect(ApiClient.instance.farmId, 'all');
   });
 
+  test('farm selection rejects IDs absent from the account farm list',
+      () async {
+    SharedPreferences.setMockInitialValues({});
+    ApiClient.instance.farmId = null;
+    final auth = AuthState()
+      ..farms = [
+        {'farm_id': '1d2b7c31-3f9f-43a2-b247-6a298f5f2a11'}
+      ];
+    addTearDown(() {
+      ApiClient.instance.farmId = null;
+      auth.dispose();
+    });
+
+    await auth.selectFarm('all');
+    await expectLater(
+      auth.selectFarm('4a5d6e7f-8b9c-4d01-a234-56789abcdef0'),
+      throwsA(isA<StateError>()),
+    );
+
+    expect(auth.selectedFarmId, 'all');
+    expect(ApiClient.instance.farmId, 'all');
+  });
+
   testWidgets('switching farms reloads the routed screen', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final auth = AuthState();

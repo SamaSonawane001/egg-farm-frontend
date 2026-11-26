@@ -213,21 +213,48 @@ class AuthState extends ChangeNotifier {
   Future<void> selectFarm(String farmId) async {
     final previous = _selectedFarmId;
     final previousToken = _token;
+    Map<String, dynamic>? selectedFarm;
+    if (farmId != 'all') {
+      for (final farm in farms) {
+        if (farm['farm_id'] == farmId) {
+          selectedFarm = farm;
+          break;
+        }
+      }
+      if (selectedFarm == null) {
+        throw StateError('The selected farm is not in the account farm list');
+      }
+    }
+
     SharedPreferences? prefs;
     try {
       prefs = await SharedPreferences.getInstance();
       final saved = await prefs.setString('farmId', farmId);
       if (!saved) throw StateError('Failed to save the selected farm');
       _selectedFarmId = farmId;
+      if (selectedFarm != null) {
+        user = {...?user, ...selectedFarm};
+      }
       _api.farmId = farmId == 'all' ? 'all' : farmId;
       _api.invalidateCache();
       notifyListeners();
       if (farmId != 'all') {
-        final selectedUser =
-            Map<String, dynamic>.from(await _api.get('/auth/me'));
-        await prefs.setString('user', jsonEncode(selectedUser));
-        user = selectedUser;
-        notifyListeners();
+        try {
+          final selectedUser =
+              Map<String, dynamic>.from(await _api.get('/auth/me'));
+          final userSaved =
+              await prefs.setString('user', jsonEncode(selectedUser));
+          if (!userSaved) {
+            debugPrint('Could not persist the refreshed farm profile');
+          }
+          user = selectedUser;
+          notifyListeners();
+        } on ApiException catch (error) {
+          if (error.code == 'AUTH_INVALID' || error.code == 'AUTH_REQUIRED') {
+            rethrow;
+          }
+          debugPrint('Could not refresh the selected farm profile: $error');
+        }
       }
     } catch (_) {
       if (_token == previousToken) {
