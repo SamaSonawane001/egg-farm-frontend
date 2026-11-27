@@ -9,6 +9,7 @@ import 'screens/feed_product_detail_screen.dart';
 import 'screens/farm_expenses_screen.dart';
 import 'screens/flock_screen.dart';
 import 'screens/invoices_screen.dart';
+import 'screens/legal_policy_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/monthly_expense_detail_screen.dart';
 import 'screens/medicine_detail_screen.dart';
@@ -19,6 +20,7 @@ import 'screens/raw_materials_screen.dart';
 import 'screens/ready_feed_detail_screen.dart';
 import 'screens/signup_screen.dart';
 import 'widgets/app_shell.dart';
+import 'widgets/legal_documents.dart';
 
 GoRouter buildRouter(AuthState auth) {
   Page<void> page(GoRouterState state, Widget child) =>
@@ -28,11 +30,17 @@ GoRouter buildRouter(AuthState auth) {
     refreshListenable: auth.routeRefreshListenable,
     redirect: (context, state) {
       final onBootPage = state.matchedLocation == '/boot';
+      final onPublicLegalPage = state.matchedLocation == '/privacy-policy' ||
+          state.matchedLocation == '/terms';
       final onAuthPage = state.matchedLocation == '/login' ||
           state.matchedLocation == '/signup';
-      if (!auth.initialized) return onBootPage ? null : '/boot';
+      if (!auth.initialized) {
+        return onBootPage || onPublicLegalPage ? null : '/boot';
+      }
       if (onBootPage) return auth.isLoggedIn ? '/dashboard' : '/login';
-      if (!auth.isLoggedIn && !onAuthPage) return '/login';
+      if (!auth.isLoggedIn && !onAuthPage && !onPublicLegalPage) {
+        return '/login';
+      }
       if (auth.isLoggedIn && onAuthPage) return '/dashboard';
       return null;
     },
@@ -51,6 +59,20 @@ GoRouter buildRouter(AuthState auth) {
       GoRoute(
         path: '/signup',
         pageBuilder: (_, state) => page(state, const SignupScreen()),
+      ),
+      GoRoute(
+        path: '/privacy-policy',
+        pageBuilder: (_, state) => page(
+          state,
+          const LegalPolicyScreen(type: LegalPolicyType.privacyPolicy),
+        ),
+      ),
+      GoRoute(
+        path: '/terms',
+        pageBuilder: (_, state) => page(
+          state,
+          const LegalPolicyScreen(type: LegalPolicyType.terms),
+        ),
       ),
       ShellRoute(
         builder: (context, state, child) =>

@@ -99,42 +99,75 @@ class _LegalContent extends StatelessWidget {
   }
 }
 
+const _consentSection = (
+  'Consent & data notice',
+  'By creating an account, you consent to using your name, farm details, and mobile number for farm accounting, billing, and phone OTP authentication (currently delivered by SMS). WhatsApp may be used for support communications; OTP delivery through WhatsApp applies only where that channel is enabled. The app also processes the farm operational and invoice records you enter, including customer/contact and payment details, and business profile assets you upload, to provide these features.',
+);
+
+const _termsSection = (
+  'Terms & Conditions',
+  '1. Eligibility (18+): You confirm that you are at least 18 years old and authorized to manage the poultry farm business.\n\n'
+      '2. App purpose & your responsibility: Egg Farm Manager is a digital record-keeping and billing tool. You are responsible for verifying stock, mortality, feed, medicine dosages, GST/tax figures, and keeping backups of critical business records.\n\n'
+      '3. Account security: Keep your password and OTP confidential. Do not misuse customer phone numbers or send spam invoices.\n\n'
+      '4. Subscription & availability: The software is provided as-is, with reasonable efforts toward availability and support. Temporary interruptions or data connectivity issues may occur.',
+);
+
+const _subscriptionSection = (
+  'Subscription & cancellation policy',
+  'Annual Pro costs ₹1,599 for 365 days and includes unlimited invoices and multi-farm access. This is a one-time payment with no auto-debit or recurring e-mandate. Paid access starts from the confirmed payment timestamp. You may cancel at any time from Farm Profile. After cancellation, access continues through the stated expiry date and the subscription will not renew. No partial or full refund is issued for the remaining active period. Payment attempts awaiting bank/UPI confirmation do not unlock invoice creation.',
+);
+
+const _privacySection = (
+  'Privacy Policy — data collected and purpose',
+  'We collect your name, mobile number, farm/unit profiles, and the farm records you add, including flocks, mortality, egg production, feed and medicine inventory, expenses, invoices, customer/contact details, and payment records. Your mobile number is used for phone OTP authentication (currently by SMS); WhatsApp may be used for support and for OTP only where enabled. We store farm records electronically in the service database and uploaded business profile assets in associated storage so the app can provide its features. Please do not enter information that is not needed for these purposes.',
+);
+
+const _securitySection = (
+  'Security, sharing & retention',
+  'Farm records are scoped to the owner account and are not sold to third-party advertisers. Data is protected in transit when you use the service over HTTPS. Information may be processed by service providers needed to operate the app. Records are retained while your account is active and as required for legitimate business, security, or legal purposes.',
+);
+
+const _rightsSection = (
+  'Your rights and requests',
+  'You may update your profile in the app and request access, export, or correction of your information, withdraw consent, or request deletion of your account and associated farm records. To request deletion, email eggfarmsupport@gmail.com with your registered mobile number and a description of the account/data to delete. Do not include your password or OTP. We may need to retain some records where applicable law requires it. Withdrawal may affect features that need the relevant data.',
+);
+
+const _contactSection = (
+  'Grievance & support contact',
+  'Website: eggfarmmanager.in\n'
+      'Support Email: eggfarmsupport@gmail.com\n'
+      'Support / WhatsApp: +91 8208810742\n'
+      'Grievance Officer: Samadhan Sonawane\n\n'
+      'Please include your account mobile number and a description of your request; do not send your password or OTP. We will acknowledge and address grievances within the timelines required by applicable law. If unresolved, you may escalate to the Data Protection Board of India or other authority as provided under applicable Indian data-protection law.',
+);
+
 const _englishSections = <(String, String)>[
-  (
-    'Consent & data notice',
-    'By creating an account, you consent to using your name, farm details, and mobile number for farm accounting, billing, and OTP verification. The app also processes the farm operational and invoice records you enter, including customer/contact and payment details, and business profile assets you upload, to provide these features.',
-  ),
-  (
-    'Terms & Conditions',
-    '1. Eligibility (18+): You confirm that you are at least 18 years old and authorized to manage the poultry farm business.\n\n'
-        '2. App purpose & your responsibility: Egg Farm Manager is a digital record-keeping and billing tool. You are responsible for verifying stock, mortality, feed, medicine dosages, GST/tax figures, and keeping backups of critical business records.\n\n'
-        '3. Account security: Keep your password and OTP confidential. Do not misuse customer phone numbers or send spam invoices.\n\n'
-        '4. Subscription & availability: The software is provided as-is, with reasonable efforts toward availability and support. Temporary interruptions or data connectivity issues may occur.',
-  ),
-  (
-    'Subscription & cancellation policy',
-    'Annual Pro costs ₹1,599 for 365 days and includes unlimited invoices and multi-farm access. This is a one-time payment with no auto-debit or recurring e-mandate. Paid access starts from the confirmed payment timestamp. You may cancel at any time from Farm Profile. After cancellation, access continues through the stated expiry date and the subscription will not renew. No partial or full refund is issued for the remaining active period. Payment attempts awaiting bank/UPI confirmation do not unlock invoice creation.',
-  ),
-  (
-    'Privacy Policy — data collected and purpose',
-    'We use owner name, farm/unit details, mobile number, farm operational and invoice records, customer/contact and payment records entered by you, and business profile assets you upload. This information is used to provide multi-farm management, record keeping, PDF invoicing, and OTP authentication. Please do not enter information that is not needed for these purposes.',
-  ),
-  (
-    'Security, sharing & retention',
-    'Farm records are scoped to the owner account. Data is protected in transit when you use the service over HTTPS and is not sold to third-party advertisers. Information may be processed by service providers needed to operate the app. Records are retained while your account is active and as required for legitimate business, security, or legal purposes.',
-  ),
-  (
-    'Your rights and requests',
-    'You may update your profile in the app and request access, export, correction, withdrawal of consent, or account and associated-record deletion by contacting the support/grievance officer below. Some records may need to be retained where applicable law requires it. Withdrawal may affect features that need the relevant data.',
-  ),
-  (
-    'Grievance & support contact',
-    'Support Email: eggfarmsupport@gmail.com\n'
-        'Support / WhatsApp: +91 8208810742\n'
-        'Grievance Officer: Samadhan Sonawane\n\n'
-        'Please include your account mobile number and a description of your request; do not send your password or OTP. We will acknowledge and address grievances within the timelines required by applicable law. If unresolved, you may escalate to the Data Protection Board of India or other authority as provided under applicable Indian data-protection law.',
-  ),
+  _consentSection,
+  _termsSection,
+  _subscriptionSection,
+  _privacySection,
+  _securitySection,
+  _rightsSection,
+  _contactSection,
 ];
+
+enum LegalPolicyType { privacyPolicy, terms }
+
+List<(String, String)> legalPolicySections(LegalPolicyType type) =>
+    switch (type) {
+      LegalPolicyType.privacyPolicy => [
+          _consentSection,
+          _privacySection,
+          _securitySection,
+          _rightsSection,
+          _contactSection,
+        ],
+      LegalPolicyType.terms => [
+          _termsSection,
+          _subscriptionSection,
+          _contactSection,
+        ],
+    };
 
 const _marathiSections = <(String, String)>[
   (

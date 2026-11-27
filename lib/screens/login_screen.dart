@@ -30,8 +30,45 @@ class AuthScaffold extends StatelessWidget {
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(20),
               child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 440),
-                  child: child),
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    child,
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        TextButton(
+                          style: TextButton.styleFrom(
+                            foregroundColor:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          onPressed: () => context.go('/privacy-policy'),
+                          child: const Text('Privacy Policy'),
+                        ),
+                        Text(
+                          '•',
+                          style: TextStyle(
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        TextButton(
+                          style: TextButton.styleFrom(
+                            foregroundColor:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          onPressed: () => context.go('/terms'),
+                          child: const Text('Terms'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
