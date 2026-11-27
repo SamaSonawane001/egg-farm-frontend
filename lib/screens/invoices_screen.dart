@@ -180,11 +180,64 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   final ScrollController _scrollController = ScrollController();
   int _page = 1;
   int _section = 0;
+  Map<String, dynamic>? _subscriptionStatus;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_refreshSubscriptionStatus());
+  }
 
   @override
   void dispose() {
     _scrollController.dispose();
     super.dispose();
+  }
+
+  Future<Map<String, dynamic>?> _refreshSubscriptionStatus() async {
+    try {
+      final status = Map<String, dynamic>.from(
+        await ApiClient.instance.get('/subscription/status') as Map,
+      );
+      if (mounted) setState(() => _subscriptionStatus = status);
+      return status;
+    } catch (error) {
+      debugPrint('Could not load subscription status: $error');
+      return null;
+    }
+  }
+
+  Future<void> _openNewInvoice(
+    BuildContext context,
+    VoidCallback reload,
+    double availableEggs,
+  ) async {
+    final status = _subscriptionStatus ?? await _refreshSubscriptionStatus();
+    if (!context.mounted) return;
+    if (status == null) {
+      toast(context, 'Could not check subscription status. Please try again.',
+          error: true);
+      return;
+    }
+
+    final state = '${status['status'] ?? ''}'.toUpperCase();
+    final expiresAt = DateTime.tryParse('${status['expires_at'] ?? ''}');
+    final hasEntitlement = (state == 'ACTIVE' || state == 'CANCELLED') &&
+        expiresAt != null &&
+        expiresAt.isAfter(DateTime.now());
+    final remainingFree = status['remaining_free'] == null
+        ? asI(status['free_limit']) - asI(status['invoices_used'])
+        : asI(status['remaining_free']);
+
+    if (!hasEntitlement && remainingFree <= 0) {
+      final activated = await showSubscriptionPaywall(
+        context,
+        paymentPending: state == 'PENDING',
+      );
+      if (!activated || !context.mounted) return;
+    }
+
+    await _create(context, reload, availableEggs);
   }
 
   void _changePage(int page) {
@@ -232,6 +285,8 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
               availableEggs: availableEggs)),
     );
     if (created == null) return;
+    if (!context.mounted) return;
+    await _refreshSubscriptionStatus();
     if (!context.mounted) return;
     toast(context, 'Invoice created successfully');
     showDialog(
@@ -325,7 +380,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                           AppColors.yolk,
                         ),
                         FilledButton.icon(
-                          onPressed: () => _create(
+                          onPressed: () => _openNewInvoice(
                               context, reload, asD(eggStock['available_eggs'])),
                           icon: const Icon(Icons.add),
                           label: const Text('New invoice'),
