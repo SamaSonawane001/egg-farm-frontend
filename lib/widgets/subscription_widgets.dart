@@ -59,6 +59,8 @@ class _SubscriptionPaywallDialogState extends State<SubscriptionPaywallDialog> {
       _busy = true;
       _error = null;
     });
+    var paymentSucceeded = false;
+    Map<String, dynamic>? verificationResult;
     try {
       final auth = context.read<AuthState>();
       final order = Map<String, dynamic>.from(
@@ -67,25 +69,32 @@ class _SubscriptionPaywallDialogState extends State<SubscriptionPaywallDialog> {
           {'terms_accepted': true},
         ),
       );
-      final checkout = await openRazorpayCheckout(
+      await openRazorpayCheckout(
         keyId: '${order['key_id']}',
         orderId: '${order['order_id']}',
         amount: (order['amount'] as num).toInt(),
         currency: '${order['currency']}',
         ownerName: auth.ownerName,
         contact: _contact(auth.mobile),
-      );
-      final result = Map<String, dynamic>.from(
-        await ApiClient.instance.post(
-          '/subscription/verify-payment',
-          {
-            'razorpay_order_id': checkout.orderId,
-            'razorpay_payment_id': checkout.paymentId,
-            'razorpay_signature': checkout.signature,
-          },
-        ),
+        onPaymentSuccess: (payment) async {
+          paymentSucceeded = true;
+          verificationResult = Map<String, dynamic>.from(
+            await ApiClient.instance.post(
+              '/subscription/verify-payment',
+              {
+                'razorpay_order_id': payment.orderId,
+                'razorpay_payment_id': payment.paymentId,
+                'razorpay_signature': payment.signature,
+              },
+            ),
+          );
+        },
       );
       if (!mounted) return;
+      final result = verificationResult;
+      if (result == null) {
+        throw StateError('Payment verification did not return a result.');
+      }
       if (result['status'] == 'ACTIVE') {
         toast(context, 'Annual Pro subscription activated');
         Navigator.of(context).pop(true);
@@ -102,7 +111,10 @@ class _SubscriptionPaywallDialogState extends State<SubscriptionPaywallDialog> {
       final message = '$error';
       setState(() {
         _error = message;
-        if (message.contains('Refresh payment status')) _pending = true;
+        if (paymentSucceeded || message.contains('Refresh payment status')) {
+          _pending = true;
+          _termsAccepted = false;
+        }
       });
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -479,13 +491,31 @@ class _SubscriptionPaywallDialogState extends State<SubscriptionPaywallDialog> {
                           ),
                         )
                       : Text(
-                          _pending ? 'Refresh Payment Status' : 'Pay ₹1,599 Now',
+                          _pending
+                              ? 'Refresh Payment Status'
+                              : 'Pay ₹1,599 Now',
                           style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
                 ),
+                if (_pending) ...[
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                    ),
+                    onPressed: _busy ? null : _pay,
+                    icon: const Icon(Icons.payment),
+                    label: const Text(
+                      'Retry Payment (Pay ₹1,599 Now)',
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 Text(
                   'Account: ${auth.ownerName} • ${auth.mobile}',
@@ -624,6 +654,21 @@ class SubscriptionManagementCard extends StatelessWidget {
                 onPressed: () => _refreshPayment(context),
                 icon: const Icon(Icons.refresh),
                 label: const Text('Refresh Payment Status'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  final activated = await showSubscriptionPaywall(
+                    context,
+                    paymentPending: true,
+                  );
+                  if (activated) reload();
+                },
+                icon: const Icon(Icons.payment),
+                label: const Text('Retry Payment (Pay ₹1,599 Now)'),
               ),
             ),
           ],

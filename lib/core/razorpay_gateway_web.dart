@@ -22,8 +22,22 @@ Future<RazorpayCheckoutResult> openRazorpayCheckout({
   required String currency,
   required String ownerName,
   required String contact,
+  required Future<void> Function(RazorpayCheckoutResult payment)
+      onPaymentSuccess,
 }) {
   final completer = Completer<RazorpayCheckoutResult>();
+  var paymentReceived = false;
+  Future<void> verifyPayment(RazorpayCheckoutResult payment) async {
+    try {
+      await onPaymentSuccess(payment);
+      if (!completer.isCompleted) completer.complete(payment);
+    } catch (error, stackTrace) {
+      if (!completer.isCompleted) {
+        completer.completeError(error, stackTrace);
+      }
+    }
+  }
+
   final onSuccess = ((
     JSString responseOrderId,
     JSString paymentId,
@@ -41,16 +55,19 @@ Future<RazorpayCheckoutResult> openRazorpayCheckout({
       );
       return;
     }
-    completer.complete(
-      RazorpayCheckoutResult(
-        orderId: order,
-        paymentId: payment,
-        signature: signed,
+    paymentReceived = true;
+    unawaited(
+      verifyPayment(
+        RazorpayCheckoutResult(
+          orderId: order,
+          paymentId: payment,
+          signature: signed,
+        ),
       ),
     );
   }).toJS;
   final onDismiss = (() {
-    if (!completer.isCompleted) {
+    if (!paymentReceived && !completer.isCompleted) {
       completer.completeError(
         const RazorpayCheckoutException('Payment was not completed.'),
       );

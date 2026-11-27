@@ -7,6 +7,8 @@ Future<RazorpayCheckoutResult> openRazorpayCheckout({
   required String currency,
   required String ownerName,
   required String contact,
+  required Future<void> Function(RazorpayCheckoutResult payment)
+      onPaymentSuccess,
 }) =>
     Future.error(
       const RazorpayCheckoutException(

@@ -11,10 +11,13 @@ Future<RazorpayCheckoutResult> openRazorpayCheckout({
   required String currency,
   required String ownerName,
   required String contact,
+  required Future<void> Function(RazorpayCheckoutResult payment)
+      onPaymentSuccess,
 }) async {
   final gateway = Razorpay();
   final completer = Completer<RazorpayCheckoutResult>();
-  gateway.on(Razorpay.EVENT_PAYMENT_SUCCESS, (PaymentSuccessResponse response) {
+  gateway.on(Razorpay.EVENT_PAYMENT_SUCCESS,
+      (PaymentSuccessResponse response) async {
     if (completer.isCompleted) return;
     final paymentId = response.paymentId;
     final responseOrderId = response.orderId;
@@ -27,13 +30,19 @@ Future<RazorpayCheckoutResult> openRazorpayCheckout({
       );
       return;
     }
-    completer.complete(
-      RazorpayCheckoutResult(
-        orderId: responseOrderId,
-        paymentId: paymentId,
-        signature: signature,
-      ),
+    final payment = RazorpayCheckoutResult(
+      orderId: responseOrderId,
+      paymentId: paymentId,
+      signature: signature,
     );
+    try {
+      await onPaymentSuccess(payment);
+      if (!completer.isCompleted) completer.complete(payment);
+    } catch (error, stackTrace) {
+      if (!completer.isCompleted) {
+        completer.completeError(error, stackTrace);
+      }
+    }
   });
   gateway.on(Razorpay.EVENT_PAYMENT_ERROR, (PaymentFailureResponse response) {
     if (!completer.isCompleted) {
