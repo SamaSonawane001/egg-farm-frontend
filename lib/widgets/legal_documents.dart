@@ -113,7 +113,7 @@ const _englishSections = <(String, String)>[
   ),
   (
     'Subscription & cancellation policy',
-    'Annual Pro costs ₹899 for 365 days and includes unlimited invoices and multi-farm access. Payment must be confirmed by Razorpay before paid access is activated. You may cancel at any time from Farm Profile. After cancellation, access continues through the stated expiry date and the subscription will not renew. No partial or full refund is issued for the remaining active period. Payment attempts awaiting bank/UPI confirmation do not unlock invoice creation.',
+    'Annual Pro costs ₹1,599 for 365 days and includes unlimited invoices and multi-farm access. This is a one-time payment with no auto-debit or recurring e-mandate. Paid access starts from the confirmed payment timestamp. You may cancel at any time from Farm Profile. After cancellation, access continues through the stated expiry date and the subscription will not renew. No partial or full refund is issued for the remaining active period. Payment attempts awaiting bank/UPI confirmation do not unlock invoice creation.',
   ),
   (
     'Privacy Policy — data collected and purpose',
@@ -150,7 +150,7 @@ const _marathiSections = <(String, String)>[
   ),
   (
     'सदस्यता व रद्द करण्याचे धोरण',
-    'Annual Pro योजनेची किंमत ₹899 असून ती 365 दिवसांसाठी वैध आहे. या योजनेत अमर्यादित बिले आणि अनेक फार्म/युनिटचा वापर समाविष्ट आहे. Razorpay कडून पेमेंटची पुष्टी झाल्यानंतरच सशुल्क प्रवेश सुरू होईल. Farm Profile मधून कधीही सदस्यता रद्द करता येईल. रद्द केल्यानंतरही दाखवलेल्या समाप्ती तारखेपर्यंत प्रवेश सुरू राहील आणि सदस्यता आपोआप नूतनीकरण होणार नाही. उर्वरित सक्रिय कालावधीसाठी अंशतः किंवा पूर्ण परतावा दिला जाणार नाही. बँक/UPI पुष्टीची प्रतीक्षा असलेले पेमेंट बिल तयार करण्याचा प्रवेश देत नाही.',
+    'Annual Pro योजनेची किंमत ₹1,599 असून ती 365 दिवसांसाठी वैध आहे. या योजनेत अमर्यादित बिले आणि अनेक फार्म/युनिटचा वापर समाविष्ट आहे. हे एकदाच केलेले पेमेंट आहे; ऑटो-डेबिट किंवा आवर्ती ई-मँडेट नाही. Razorpay कडून पेमेंटची पुष्टी झाल्यानंतर पेमेंटच्या वेळेपासून सशुल्क प्रवेश सुरू होईल. Farm Profile मधून कधीही सदस्यता रद्द करता येईल. रद्द केल्यानंतरही दाखवलेल्या समाप्ती तारखेपर्यंत प्रवेश सुरू राहील आणि सदस्यता आपोआप नूतनीकरण होणार नाही. उर्वरित सक्रिय कालावधीसाठी अंशतः किंवा पूर्ण परतावा दिला जाणार नाही. बँक/UPI पुष्टीची प्रतीक्षा असलेले पेमेंट बिल तयार करण्याचा प्रवेश देत नाही.',
   ),
   (
     'गोपनीयता धोरण — गोळा केलेली माहिती व उद्देश',

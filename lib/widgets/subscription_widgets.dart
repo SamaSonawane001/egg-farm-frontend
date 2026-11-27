@@ -6,6 +6,7 @@ import '../core/api_client.dart';
 import '../core/auth_state.dart';
 import '../core/razorpay_gateway.dart';
 import 'common.dart';
+import 'legal_documents.dart';
 
 Future<bool> showSubscriptionPaywall(
   BuildContext context, {
@@ -149,91 +150,355 @@ class _SubscriptionPaywallDialogState extends State<SubscriptionPaywallDialog> {
   Widget build(BuildContext context) {
     final auth = context.read<AuthState>();
     final colors = Theme.of(context).colorScheme;
-    return AlertDialog(
-      title: const Text('Annual Pro Subscription'),
-      content: SizedBox(
-        width: 460,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    const accent = Color(0xFF40D9A2);
+    final proFeatures = [
+      'Unlimited Invoices & PDF Billing',
+      'Multi-Farm / Multi-Shed Management',
+      'Central Godown Shared Inventory & Medicines',
+      'Full Profit/Loss, Khata & Analytics Reports',
+      'Cloud Backup & Priority Support',
+    ];
+    final trialFeatures = [
+      'Up to 3 free invoices',
+      'Basic flock, feed & egg tracking',
+      'Single farm dashboard preview',
+    ];
+
+    Widget feature(String label, {required Color foreground}) => Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Annual Pro Plan • ₹899 / 1 Year (365 Days) • Unlimited Invoices & Multi-Farm Access',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 12),
-              if (_pending)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: colors.tertiaryContainer,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Text(
-                    'Payment Pending Confirmation\n'
-                    'Invoices stay locked until Razorpay confirms the payment. '
-                    'UPI or bank confirmation may take a little time.',
-                  ),
-                )
-              else
-                CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  value: _termsAccepted,
-                  controlAffinity: ListTileControlAffinity.leading,
-                  onChanged: _busy
-                      ? null
-                      : (value) =>
-                          setState(() => _termsAccepted = value ?? false),
-                  title: const Text(
-                    'I agree to the Subscription Terms (English / मराठी): '
-                    'Valid for 365 days from payment. You can cancel anytime '
-                    'from Farm Profile; upon cancellation, access continues '
-                    'until the 1-year expiry date with no partial or full refund.\n\n'
-                    'मी सदस्यता अटींना सहमत आहे: पेमेंटनंतर 365 दिवस वैध. '
-                    'Farm Profile मधून कधीही रद्द करता येईल; रद्द केल्यावरही '
-                    'मुदत संपेपर्यंत प्रवेश सुरू राहील आणि अंशतः किंवा पूर्ण '
-                    'परतावा मिळणार नाही.',
-                  ),
+              Icon(Icons.check_circle, size: 19, color: accent),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(color: foreground, height: 1.25),
                 ),
-              if (_error != null) ...[
-                const SizedBox(height: 8),
-                Text(_error!, style: TextStyle(color: colors.error)),
-              ],
-              const SizedBox(height: 6),
-              Text(
-                'Account: ${auth.ownerName} • ${auth.mobile}',
-                style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
           ),
+        );
+
+    Widget trialCard() => Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: colors.surfaceContainerHighest.withValues(alpha: .72),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: colors.outlineVariant),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Free Trial',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      )),
+              const SizedBox(height: 4),
+              Text('Starter',
+                  style: TextStyle(color: colors.onSurfaceVariant)),
+              const SizedBox(height: 16),
+              const Text(
+                '₹0',
+                style: TextStyle(fontSize: 34, fontWeight: FontWeight.w800),
+              ),
+              Text('/ 3 Invoices',
+                  style: TextStyle(color: colors.onSurfaceVariant)),
+              const SizedBox(height: 10),
+              for (final item in trialFeatures)
+                feature(item, foreground: colors.onSurface),
+            ],
+          ),
+        );
+
+    Widget proCard() => Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF123D36), Color(0xFF101D32)],
+            ),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: accent.withValues(alpha: .8), width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: accent.withValues(alpha: .18),
+                blurRadius: 28,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Align(
+                alignment: Alignment.centerRight,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: .16),
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(color: accent.withValues(alpha: .52)),
+                  ),
+                  child: const Text(
+                    'RECOMMENDED',
+                    style: TextStyle(
+                      color: Color(0xFF8FF0C7),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                ),
+              ),
+              Text(
+                'Annual Pro Plan',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+              const SizedBox(height: 14),
+              const Wrap(
+                crossAxisAlignment: WrapCrossAlignment.end,
+                spacing: 7,
+                children: [
+                  Text(
+                    '₹1,599',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 36,
+                      height: 1,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  Padding(
+                    padding: EdgeInsets.only(bottom: 3),
+                    child: Text(
+                      '/ year',
+                      style: TextStyle(color: Color(0xFFB7C9C5)),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                '365 Days • One-Time Payment, No Auto-Pay',
+                style: TextStyle(
+                  color: Color(0xFF8FF0C7),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 5),
+              for (final item in proFeatures)
+                feature(item, foreground: Colors.white),
+            ],
+          ),
+        );
+
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+      backgroundColor: Colors.transparent,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 940,
+          maxHeight: MediaQuery.sizeOf(context).height * .92,
+        ),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: dark ? const Color(0xFF111C2D) : colors.surface,
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(color: colors.outlineVariant),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: dark ? .42 : .18),
+                blurRadius: 36,
+                offset: const Offset(0, 18),
+              ),
+            ],
+          ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Plans & Pricing',
+                            style:
+                                Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            'Choose Your Plan',
+                            style: TextStyle(color: colors.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Close',
+                      onPressed:
+                          _busy ? null : () => Navigator.of(context).pop(false),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    if (constraints.maxWidth < 650) {
+                      return Column(
+                        children: [
+                          trialCard(),
+                          const SizedBox(height: 14),
+                          proCard(),
+                        ],
+                      );
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: trialCard()),
+                        const SizedBox(width: 16),
+                        Expanded(child: proCard()),
+                      ],
+                    );
+                  },
+                ),
+                if (_pending) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: colors.tertiaryContainer,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Text(
+                      'Payment Pending Confirmation\n'
+                      'Invoices stay locked until Razorpay confirms the payment. '
+                      'UPI or bank confirmation may take a little time.',
+                    ),
+                  ),
+                ] else ...[
+                  const SizedBox(height: 16),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Checkbox(
+                        value: _termsAccepted,
+                        onChanged: _busy
+                            ? null
+                            : (value) =>
+                                setState(() => _termsAccepted = value ?? false),
+                      ),
+                      Expanded(
+                        child: Wrap(
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            const Text('I agree to the '),
+                            InkWell(
+                              onTap: () => showLegalDocuments(context),
+                              child: Text(
+                                'Terms & Conditions',
+                                style: TextStyle(
+                                  color: colors.primary,
+                                  decoration: TextDecoration.underline,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            const Text(' & No-Refund Policy'),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colors.tertiaryContainer.withValues(alpha: .55),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: colors.tertiary.withValues(alpha: .3),
+                      ),
+                    ),
+                    child: Text(
+                      '• One-time ₹1,599 payment (No auto-debit). If cancelled anytime from Farm Profile, no refund is issued, and your Pro access stays active until the full 1-year (365 days) expiry.\n'
+                      '• एकदाच ₹1,599 पेमेंट (ऑटो-पे नाही). Farm Profile मधून कधीही रद्द केले तरी पैसे परत मिळणार नाहीत, पण तुमचा प्लॅन पूर्ण १ वर्ष (३६५ दिवस) सुरू राहील.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            height: 1.45,
+                            color: colors.onSurface,
+                          ),
+                    ),
+                  ),
+                ],
+                if (_error != null) ...[
+                  const SizedBox(height: 12),
+                  Text(_error!, style: TextStyle(color: colors.error)),
+                ],
+                const SizedBox(height: 14),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                    backgroundColor: const Color(0xFF0B9B74),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                  ),
+                  onPressed: _busy
+                      ? null
+                      : _pending
+                          ? _refreshPayment
+                          : _termsAccepted
+                              ? _pay
+                              : null,
+                  child: _busy
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Text(
+                          _pending ? 'Refresh Payment Status' : 'Pay ₹1,599 Now',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Account: ${auth.ownerName} • ${auth.mobile}',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: _busy ? null : () => Navigator.of(context).pop(false),
-          child: const Text('Close'),
-        ),
-        FilledButton(
-          onPressed: _busy
-              ? null
-              : _pending
-                  ? _refreshPayment
-                  : _termsAccepted
-                      ? _pay
-                      : null,
-          child: _busy
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : Text(
-                  _pending ? 'Refresh Payment Status' : 'Pay ₹899 Now',
-                ),
-        ),
-      ],
     );
   }
 }
@@ -381,7 +646,7 @@ class SubscriptionManagementCard extends StatelessWidget {
                   final activated = await showSubscriptionPaywall(context);
                   if (activated) reload();
                 },
-                child: const Text('Renew / Upgrade (₹899/yr)'),
+                child: const Text('Renew / Upgrade (₹1,599/yr)'),
               ),
             ),
           ],
