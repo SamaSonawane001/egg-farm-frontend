@@ -18,7 +18,6 @@ class _ReadyFeedDetailScreenState extends State<ReadyFeedDetailScreen> {
       final results = await Future.wait([
         ApiClient.instance.get('/feed/ready-feed'),
         ApiClient.instance.get('/flock/batches'),
-        ApiClient.instance.get('/raw-materials'),
       ]);
       final result = Map<String, dynamic>.from(results[0] as Map);
       final feeds = List<Map<String, dynamic>>.from(
@@ -32,17 +31,9 @@ class _ReadyFeedDetailScreenState extends State<ReadyFeedDetailScreen> {
                     ? asD(result['kg_per_bag'])
                     : 50),
           });
-      final materials = List<Map<String, dynamic>>.from(
-        results[2] as List,
-      ).map((material) => {
-            ...material,
-            'source_type': 'raw_material',
-            'item_id': '${material['id']}',
-            'available_kg': asD(material['current_stock']),
-          });
       return {
         'product': Map<String, dynamic>.from(result['product'] as Map),
-        'sources': [...feeds, ...materials],
+        'sources': feeds.toList(),
         'preparations':
             List<Map<String, dynamic>>.from(result['preparations'] as List),
         'usage': List<Map<String, dynamic>>.from(result['usage'] as List),
@@ -79,7 +70,6 @@ class _ReadyFeedDetailScreenState extends State<ReadyFeedDetailScreen> {
         if (error is ApiException && error.status == 404) return <dynamic>[];
         throw error;
       }),
-      ApiClient.instance.get('/raw-materials'),
     ]);
     final products = List<Map<String, dynamic>>.from(results[0] as List);
     final ready = products.where(
@@ -119,14 +109,6 @@ class _ReadyFeedDetailScreenState extends State<ReadyFeedDetailScreen> {
               'available_kg': asD(feed['remaining_bags']) * kgPerBag,
             })
         .toList();
-    sources.addAll(
-      List<Map<String, dynamic>>.from(results[3] as List).map((material) => {
-            ...material,
-            'source_type': 'raw_material',
-            'item_id': '${material['id']}',
-            'available_kg': asD(material['current_stock']),
-          }),
-    );
     return {
       'product': product,
       'sources': sources,
@@ -242,6 +224,11 @@ class _ReadyFeedDetailScreenState extends State<ReadyFeedDetailScreen> {
     final rows = <_IngredientRow>[];
     final savedIngredients = List<Map<String, dynamic>>.from(
         preparation?['ingredients'] as List? ?? const []);
+    final hasUnsupportedSavedIngredients = savedIngredients.any((item) {
+      final sourceType = item['source_type'] ??
+          (item['material_id'] == null ? 'feed' : 'raw_material');
+      return sourceType != 'feed';
+    });
     if (savedIngredients.isEmpty) {
       rows.add(_IngredientRow(
         sourceKey: sources.isEmpty
@@ -250,9 +237,18 @@ class _ReadyFeedDetailScreenState extends State<ReadyFeedDetailScreen> {
       ));
     } else {
       for (final item in savedIngredients) {
+        final sourceType = item['source_type'] ??
+            (item['material_id'] == null ? 'feed' : 'raw_material');
+        final itemId =
+            item['item_id'] ?? item['feed_product_id'] ?? item['material_id'];
+        final savedSourceKey = '$sourceType:$itemId';
         rows.add(_IngredientRow(
-          sourceKey:
-              '${item['source_type'] ?? 'feed'}:${item['item_id'] ?? item['feed_product_id'] ?? item['material_id']}',
+          sourceKey: sourceType == 'feed' &&
+                  sources.any((source) =>
+                      '${source['source_type']}:${source['item_id']}' ==
+                      savedSourceKey)
+              ? savedSourceKey
+              : null,
           quantity: asD(item['quantity_kg']).toString(),
         ));
       }
@@ -282,7 +278,14 @@ class _ReadyFeedDetailScreenState extends State<ReadyFeedDetailScreen> {
                       const Padding(
                         padding: EdgeInsets.only(bottom: 12),
                         child: Text(
-                          'No feed or raw material sources are available yet. Add inventory stock, then select ingredients here.',
+                          'No Feed Inventory items are available yet. Add feed stock, then select ingredients here.',
+                        ),
+                      ),
+                    if (hasUnsupportedSavedIngredients && sources.isNotEmpty)
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 12),
+                        child: Text(
+                          'This batch contains ingredients from outside Feed Inventory. Replace them with Feed Inventory items before saving.',
                         ),
                       ),
                     OutlinedButton.icon(
@@ -381,8 +384,19 @@ class _ReadyFeedDetailScreenState extends State<ReadyFeedDetailScreen> {
                     final separator = sourceKey.indexOf(':');
                     final sourceType = sourceKey.substring(0, separator);
                     final itemId = sourceKey.substring(separator + 1);
+                    if (sourceType != 'feed' ||
+                        !sources.any((source) =>
+                            '${source['source_type']}:${source['item_id']}' ==
+                            sourceKey)) {
+                      toast(
+                        context,
+                        'Only Feed Inventory items can be used as ingredients',
+                        error: true,
+                      );
+                      return;
+                    }
                     ingredients.add({
-                      'source_type': sourceType,
+                      'source_type': 'feed',
                       'item_id': itemId,
                       'quantity_kg':
                           row.unit == 'bags' ? quantity * kgPerBag : quantity,
@@ -466,58 +480,70 @@ class _ReadyFeedDetailScreenState extends State<ReadyFeedDetailScreen> {
     required bool canRemove,
     required VoidCallback onRemove,
   }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(
-          flex: 4,
-          child: DropdownButtonFormField<String>(
-            key: ValueKey('source-${row.sourceKey}'),
-            initialValue: row.sourceKey,
-            decoration: const InputDecoration(labelText: 'Source item'),
-            items: [
-              for (final source in sources)
-                DropdownMenuItem(
-                  value: '${source['source_type']}:${source['item_id']}',
-                  child: Text(
-                    '${source['name']} [${source['source_type'] == 'feed' ? 'Feed' : 'Raw Material'}] - Available: ${qty(source['available_kg'])} kg${source['source_type'] == 'feed' ? ' (${qty(asD(source['remaining_bags']))} bags)' : ''}',
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-            ],
-            onChanged: (value) => setDialogState(() => row.sourceKey = value),
-          ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                key: ValueKey('source-${row.sourceKey}'),
+                initialValue: row.sourceKey,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Feed ingredient'),
+                items: [
+                  for (final source in sources)
+                    DropdownMenuItem(
+                      value: '${source['source_type']}:${source['item_id']}',
+                      child: Text(
+                        '${source['name']} — Avail: ${qty(source['available_kg'])} kg',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                ],
+                onChanged: (value) =>
+                    setDialogState(() => row.sourceKey = value),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Remove ingredient',
+              onPressed: canRemove ? onRemove : null,
+              icon: const Icon(Icons.remove_circle_outline),
+            ),
+          ],
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          flex: 2,
-          child: TextField(
-            controller: row.controller,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'Quantity'),
-            onChanged: (_) => setDialogState(() {}),
-          ),
-        ),
-        const SizedBox(width: 8),
-        SizedBox(
-          width: 100,
-          child: DropdownButtonFormField<String>(
-            key: ValueKey('unit-${row.unit}'),
-            initialValue: row.unit,
-            decoration: const InputDecoration(labelText: 'Unit'),
-            items: const [
-              DropdownMenuItem(value: 'kg', child: Text('kg')),
-              DropdownMenuItem(value: 'bags', child: Text('bags')),
-            ],
-            onChanged: (value) => setDialogState(() {
-              if (value != null) row.unit = value;
-            }),
-          ),
-        ),
-        IconButton(
-          tooltip: 'Remove ingredient',
-          onPressed: canRemove ? onRemove : null,
-          icon: const Icon(Icons.remove_circle_outline),
+        const SizedBox(height: 8),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: TextField(
+                controller: row.controller,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Quantity'),
+                onChanged: (_) => setDialogState(() {}),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                key: ValueKey('unit-${row.unit}'),
+                initialValue: row.unit,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Unit'),
+                items: const [
+                  DropdownMenuItem(value: 'kg', child: Text('kg')),
+                  DropdownMenuItem(value: 'bags', child: Text('bags')),
+                ],
+                onChanged: (value) => setDialogState(() {
+                  if (value != null) row.unit = value;
+                }),
+              ),
+            ),
+          ],
         ),
       ],
     );
